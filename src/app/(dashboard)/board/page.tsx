@@ -17,6 +17,8 @@ import {
 import { arrayMove } from '@dnd-kit/sortable'
 import { Employee, taskAPI, employeeAPI, mockData } from '@/utils/api'
 import { useTaskManagement } from '@/lib/hooks/useTaskManagement'
+import { useStages } from '@/lib/hooks/useStages'
+import { useStatuses } from '@/lib/hooks/useStatuses'
 import { Task } from '@/lib/services/taskManagementServices'
 import { authUtils } from '@/lib/utils/api-config'
 import TaskColumn from '@/components/TaskColumn'
@@ -56,6 +58,9 @@ export default function BoardPage() {
   const [apiError, setApiError] = useState<string | null>(null)
   const [projects, setProjects] = useState<any[]>([])
 
+  // Fetch stages and statuses dynamically
+  const { stages, loading: stagesLoading, error: stagesError } = useStages()
+  const { statuses, loading: statusesLoading, error: statusesError } = useStatuses()
 
   // Task overview state
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
@@ -447,6 +452,38 @@ export default function BoardPage() {
 
 
 
+  // Column configurations
+  const statusColumns = useMemo(() => {
+    if (statuses.length > 0) {
+      return statuses.map(status => ({
+        id: status.name.toLowerCase().replace(/\s+/g, '').replace('-', ''),
+        title: status.name
+      }));
+    }
+    // Fallback to default statuses if API hasn't loaded yet
+    return [
+      { id: 'pending', title: 'Pending' },
+      { id: 'ongoing', title: 'On-going' },
+      { id: 'completed', title: 'Completed' },
+    ];
+  }, [statuses])
+
+  const stageColumns = useMemo(() => {
+    if (stages.length > 0) {
+      return stages.map(stage => ({
+        id: stage.title.toLowerCase().replace(/\s+/g, ''),
+        title: stage.title
+      }));
+    }
+    // Fallback to default stages if API hasn't loaded yet
+    return [
+      { id: 'design', title: 'Design' },
+      { id: 'html', title: 'HTML' },
+      { id: 'development', title: 'Development' },
+      { id: 'qa', title: 'QA' },
+    ];
+  }, [stages])
+
   // Group tasks by status or stage using API data
   const groupedTasks = useMemo(() => {
     console.log('🔍 BoardPage - Grouping tasks. Total API tasks:', apiTasks.length);
@@ -497,82 +534,83 @@ export default function BoardPage() {
     const filteredApiTasks = filterTasks(apiTasks);
 
     if (viewMode === 'status') {
-      const statusGrouped = {
-        pending: filteredApiTasks.filter(task => {
-          const statusValue = typeof task.status === 'string' ? task.status : task.status?.value
-          return statusValue?.toLowerCase().includes('pending')
-        }),
-        ongoing: filteredApiTasks.filter(task => {
-          const statusValue = typeof task.status === 'string' ? task.status : task.status?.value
-          return statusValue?.toLowerCase().includes('ongoing') || statusValue?.toLowerCase().includes('on-going')
-        }),
-        completed: filteredApiTasks.filter(task => {
-          const statusValue = typeof task.status === 'string' ? task.status : task.status?.value
-          return statusValue?.toLowerCase().includes('completed') || statusValue?.toLowerCase().includes('complete')
-        })
-      }
-      return {
-        pending: statusGrouped.pending,
-        ongoing: statusGrouped.ongoing,
-        completed: statusGrouped.completed
-      }
-    } else {
-      const stageGrouped = {
-        design: filteredApiTasks.filter(task => {
-          const stageValue = typeof task.stage === 'string' ? task.stage : task.stage?.value
-          return stageValue?.toLowerCase().includes('design')
-        }),
-        html: filteredApiTasks.filter(task => {
-          const stageValue = ((task.stage as any)?.value || task.stage)?.toLowerCase().trim()
-          return stageValue?.includes('html')
-        }),
-        development: filteredApiTasks.filter(task => {
-          const stageValue = ((task.stage as any)?.value || task.stage)?.toLowerCase().trim()
-          return stageValue?.includes('development')
-        }),
-        qa: filteredApiTasks.filter(task => {
-          const stageValue = ((task.stage as any)?.value || task.stage)?.toLowerCase().trim()
-          return stageValue?.includes('qa')
-        })
-      }
+      // Dynamic status grouping based on API statuses
+      const statusGrouped: Record<string, Task[]> = {};
 
-      console.log('🔍 Stage grouped results:', {
-        design: stageGrouped.design.length,
-        html: stageGrouped.html.length,
-        development: stageGrouped.development.length,
-        qa: stageGrouped.qa.length
+      // Initialize groups for each status
+      statusColumns.forEach(column => {
+        statusGrouped[column.id] = [];
       });
 
-      // Debug QA tasks specifically
-      console.log('🔍 QA tasks:', stageGrouped.qa.map(task => ({
-        id: task.id,
-        title: task.title,
-        stage: task.stage,
-        stageValue: ((task.stage as any)?.value || task.stage)?.toLowerCase().trim()
-      })));
+      // Group tasks by status
+      filteredApiTasks.forEach(task => {
+        const statusValue = ((task.status as any)?.value || task.status)?.toLowerCase().trim();
 
-      return {
-        design: stageGrouped.design,
-        html: stageGrouped.html,
-        development: stageGrouped.development,
-        qa: stageGrouped.qa
-      }
+        // Find matching status column
+        const matchingColumn = statusColumns.find(column => {
+          const columnTitle = column.title.toLowerCase().trim();
+          return statusValue?.includes(columnTitle) ||
+                 statusValue === column.id ||
+                 columnTitle.includes(statusValue || '');
+        });
+
+        if (matchingColumn) {
+          statusGrouped[matchingColumn.id].push(task);
+        } else {
+          // If no match found, try to match with first status as fallback
+          if (statusColumns.length > 0) {
+            statusGrouped[statusColumns[0].id].push(task);
+          }
+        }
+      });
+
+      console.log('🔍 Dynamic status grouped results:',
+        Object.fromEntries(
+          Object.entries(statusGrouped).map(([key, tasks]) => [key, tasks.length])
+        )
+      );
+
+      return statusGrouped;
+    } else {
+      // Dynamic stage grouping based on API stages
+      const stageGrouped: Record<string, Task[]> = {};
+
+      // Initialize groups for each stage
+      stageColumns.forEach(column => {
+        stageGrouped[column.id] = [];
+      });
+
+      // Group tasks by stage
+      filteredApiTasks.forEach(task => {
+        const stageValue = ((task.stage as any)?.value || task.stage)?.toLowerCase().trim();
+
+        // Find matching stage column
+        const matchingColumn = stageColumns.find(column => {
+          const columnTitle = column.title.toLowerCase().trim();
+          return stageValue?.includes(columnTitle) ||
+                 stageValue === column.id ||
+                 columnTitle.includes(stageValue || '');
+        });
+
+        if (matchingColumn) {
+          stageGrouped[matchingColumn.id].push(task);
+        } else {
+          // If no match found, try to match with first stage as fallback
+          if (stageColumns.length > 0) {
+            stageGrouped[stageColumns[0].id].push(task);
+          }
+        }
+      });
+
+      console.log('🔍 Dynamic stage grouped results:',
+        Object.fromEntries(
+          Object.entries(stageGrouped).map(([key, tasks]) => [key, tasks.length])
+        )
+      );
+
+      return stageGrouped;
     }
-  }, [apiTasks, viewMode, searchQuery, selectedProject, dateRange])
-
-  // Column configurations
-  const statusColumns = [
-    { id: 'pending', title: 'Pending' },
-    { id: 'ongoing', title: 'On-going' },
-    { id: 'completed', title: 'Completed' },
-  ]
-
-  const stageColumns = [
-    { id: 'design', title: 'Design' },
-    { id: 'html', title: 'HTML' },
-    { id: 'development', title: 'Development' },
-    { id: 'qa', title: 'QA' },
-  ]
+  }, [apiTasks, viewMode, searchQuery, selectedProject, dateRange, stages, statuses])
 
   const columns = viewMode === 'status' ? statusColumns : stageColumns
 

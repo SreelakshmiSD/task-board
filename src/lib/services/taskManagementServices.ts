@@ -47,6 +47,16 @@ export interface ApiTeamMember {
   } | null;
 }
 
+export interface ApiStage {
+  id: number;
+  title: string;
+}
+
+export interface ApiStatus {
+  id: string;
+  name: string;
+}
+
 // Task interfaces
 export interface Task {
   id: number;
@@ -546,6 +556,95 @@ export const taskManagementServices = {
         status: 'failure',
         message: 'Network error occurred while fetching team members',
         records: []
+      };
+    }
+  },
+
+  // Get stages list from masters-list API
+  getStagesList: async (): Promise<ApiResponse<ApiStage[]>> => {
+    try {
+      console.log('🔄 Fetching stages from masters-list API...');
+
+      const response = await axiosInstance.get('/masters-list', {
+        params: {
+          action: 'stage'
+        }
+      });
+
+      if (response.data.status === 'success') {
+        console.log('✅ Stages fetched successfully:', response.data.records?.length || 0);
+        return {
+          status: 'success',
+          message: response.data.message || 'Stages fetched successfully',
+          records: response.data.records || []
+        };
+      } else {
+        console.log('❌ Stages API error:', response.data.message);
+        return {
+          status: 'failure',
+          message: response.data.message || 'Failed to fetch stages',
+          records: []
+        };
+      }
+    } catch (error) {
+      console.error('❌ Error fetching stages:', error);
+
+      // Fallback to default stages if API fails
+      const fallbackStages: ApiStage[] = [
+        { id: 47, title: 'Design' },
+        { id: 48, title: 'HTML' },
+        { id: 49, title: 'Development' },
+        { id: 51, title: 'QA' }
+      ];
+
+      return {
+        status: 'failure',
+        message: 'Network error occurred while fetching stages - using fallback data',
+        records: fallbackStages
+      };
+    }
+  },
+
+  // Get statuses list from masters-list API
+  getStatusList: async (): Promise<ApiResponse<ApiStatus[]>> => {
+    try {
+      console.log('🔄 Fetching statuses from masters-list API...');
+
+      const response = await axiosInstance.get('/masters-list', {
+        params: {
+          action: 'task_status'
+        }
+      });
+
+      if (response.data.status === 'success') {
+        console.log('✅ Statuses fetched successfully:', response.data.records?.length || 0);
+        return {
+          status: 'success',
+          message: response.data.message || 'Statuses fetched successfully',
+          records: response.data.records || []
+        };
+      } else {
+        console.log('❌ Statuses API error:', response.data.message);
+        return {
+          status: 'failure',
+          message: response.data.message || 'Failed to fetch statuses',
+          records: []
+        };
+      }
+    } catch (error) {
+      console.error('❌ Error fetching statuses:', error);
+
+      // Fallback to default statuses if API fails
+      const fallbackStatuses: ApiStatus[] = [
+        { id: '1', name: 'Pending' },
+        { id: '2', name: 'On-going' },
+        { id: '3', name: 'Completed' }
+      ];
+
+      return {
+        status: 'failure',
+        message: 'Network error occurred while fetching statuses - using fallback data',
+        records: fallbackStatuses
       };
     }
   }
