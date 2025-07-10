@@ -432,13 +432,14 @@ export const useTaskManagement = (options: UseTaskManagementOptions = {}): UseTa
             id: Math.floor(Math.random() * 10000) + 1000,
             title: taskData.title,
             description: taskData.description || '',
-            status: getStatusName(taskData.status),
+            status: "On-going", // Always set to intermediate status for quick creation
             stage: getStageName(taskData.stage),
             priority: getPriorityName(taskData.priority),
             assigned_to: taskData.assigned_to || [],
             project: typeof taskData.project === 'string' ? taskData.project : taskData.project?.name || 'Unknown',
             tags: [],
-            progress: 0,
+            progress: 0, // Always start with 0% progress
+            time_percentages: 0, // For TaskCard display
             due_date: taskData.due_date || '',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
