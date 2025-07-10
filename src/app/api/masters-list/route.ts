@@ -14,15 +14,21 @@ export async function GET(request: NextRequest) {
 
     console.log('🔄 Proxying masters-list request for action:', action);
 
-    // Build the API URL with action parameter
-    const apiUrl = `https://workflow-dev.e8demo.com/masters-list/?action=${encodeURIComponent(action)}`;
-    console.log('📡 Calling external API:', apiUrl);
+    // Build the API URL with all query parameters
+    const apiUrl = new URL('https://workflow-dev.e8demo.com/masters-list/');
+
+    // Copy all search parameters to the external API URL
+    searchParams.forEach((value, key) => {
+      apiUrl.searchParams.set(key, value);
+    });
+
+    console.log('📡 Calling external API:', apiUrl.toString());
 
     // Create an AbortController for timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
 
-    const response = await fetch(apiUrl, {
+    const response = await fetch(apiUrl.toString(), {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

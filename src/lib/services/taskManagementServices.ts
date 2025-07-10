@@ -561,14 +561,21 @@ export const taskManagementServices = {
   },
 
   // Get stages list from masters-list API
-  getStagesList: async (): Promise<ApiResponse<ApiStage[]>> => {
+  getStagesList: async (projectId?: string): Promise<ApiResponse<ApiStage[]>> => {
     try {
-      console.log('🔄 Fetching stages from masters-list API...');
+      console.log('🔄 Fetching stages from masters-list API...', projectId ? `for project ${projectId}` : 'all stages');
+
+      const params: any = {
+        action: 'stage'
+      };
+
+      // Add project_id parameter if provided
+      if (projectId) {
+        params.project_id = projectId;
+      }
 
       const response = await axiosInstance.get('/masters-list', {
-        params: {
-          action: 'stage'
-        }
+        params
       });
 
       if (response.data.status === 'success') {
