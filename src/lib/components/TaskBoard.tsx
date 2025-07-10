@@ -10,18 +10,22 @@ interface TaskBoardProps {
   userId?: string;
   viewMode?: 'status' | 'stage';
   showProjects?: boolean;
+  selectedProject?: string;
+  projects?: Array<{ id: string; name: string; }>;
+  onProjectChange?: (project: string) => void;
 }
 
-export const TaskBoard: React.FC<TaskBoardProps> = ({ 
-  userId, 
+export const TaskBoard: React.FC<TaskBoardProps> = ({
+  userId,
   viewMode = 'status',
-  showProjects = true 
+  showProjects = true,
+  selectedProject = '',
+  projects = [],
+  onProjectChange
 }) => {
-  const [selectedProject, setSelectedProject] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  
+
   const {
-    projects,
     loading,
     error,
     groupedByStatus,
@@ -33,8 +37,13 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
     searchTasks
   } = useTaskManagement({ autoFetch: true, userId });
 
+  // Get selected project ID for stages filtering
+  const selectedProjectId = selectedProject && selectedProject !== '' && selectedProject !== 'all'
+    ? projects.find(p => p.name === selectedProject)?.id
+    : undefined;
+
   // Fetch stages and statuses dynamically
-  const stagesData = useStages();
+  const stagesData = useStages({ projectId: selectedProjectId });
   const statusesData = useStatuses();
   const stages = stagesData.stages || [];
   const statuses = statusesData.statuses || [];
@@ -186,7 +195,7 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
             <div className="min-w-48">
               <select
                 value={selectedProject}
-                onChange={(e) => setSelectedProject(e.target.value)}
+                onChange={(e) => onProjectChange?.(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Projects</option>

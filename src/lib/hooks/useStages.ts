@@ -3,6 +3,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { taskManagementServices, ApiStage, ApiResponse } from '../services/taskManagementServices';
 
+interface UseStagesOptions {
+  projectId?: string;
+}
+
 interface UseStagesReturn {
   stages: ApiStage[];
   loading: boolean;
@@ -10,7 +14,8 @@ interface UseStagesReturn {
   refetch: () => Promise<void>;
 }
 
-export const useStages = (): UseStagesReturn => {
+export const useStages = (options: UseStagesOptions = {}): UseStagesReturn => {
+  const { projectId } = options;
   const [stages, setStages] = useState<ApiStage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,8 +25,8 @@ export const useStages = (): UseStagesReturn => {
     setError(null);
 
     try {
-      console.log('🔄 Fetching stages from API...');
-      const response = await taskManagementServices.getStagesList();
+      console.log('🔄 Fetching stages from API...', projectId ? `for project ${projectId}` : 'all stages');
+      const response = await taskManagementServices.getStagesList(projectId);
 
       if (response.status === 'success') {
         console.log('✅ Stages fetched successfully:', response.records.length);
@@ -44,9 +49,9 @@ export const useStages = (): UseStagesReturn => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [projectId]);
 
-  // Auto-fetch on mount
+  // Auto-fetch on mount and when projectId changes
   useEffect(() => {
     fetchStages();
   }, [fetchStages]);

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import {
@@ -19,7 +19,7 @@ import { Employee, taskAPI, employeeAPI, mockData } from '@/utils/api'
 import { useTaskManagement } from '@/lib/hooks/useTaskManagement'
 import { useStages } from '@/lib/hooks/useStages'
 import { useStatuses } from '@/lib/hooks/useStatuses'
-import { Task } from '@/lib/services/taskManagementServices'
+import { Task, ApiStage, taskManagementServices } from '@/lib/services/taskManagementServices'
 import { authUtils } from '@/lib/utils/api-config'
 import TaskColumn from '@/components/TaskColumn'
 import Filters from '@/components/Filters'
@@ -58,7 +58,7 @@ export default function BoardPage() {
   const [apiError, setApiError] = useState<string | null>(null)
   const [projects, setProjects] = useState<any[]>([])
 
-  // Fetch stages and statuses dynamically
+  // Fetch stages and statuses dynamically (will be updated with project filtering later)
   const { stages, loading: stagesLoading, error: stagesError } = useStages()
   const { statuses, loading: statusesLoading, error: statusesError } = useStatuses()
 
@@ -234,6 +234,45 @@ export default function BoardPage() {
     }
   }
 
+  // Fetch project-specific stages
+  const fetchProjectStages = useCallback(async (projectName: string) => {
+    console.log('🔍 fetchProjectStages called with:', { projectName, projectsCount: projects.length });
+
+    if (!projectName || projectName === '' || projectName === 'all') {
+      // Use default stages from useStages hook
+      console.log('🔍 Using default stages, clearing project stages');
+      setProjectStages([]);
+      return;
+    }
+
+    setProjectStagesLoading(true);
+    try {
+      // Find project ID from project name
+      const selectedProjectData = projects.find(p => p.name === projectName);
+      if (!selectedProjectData) {
+        console.log('❌ Project not found:', projectName);
+        setProjectStages(stages); // Fallback to default stages
+        return;
+      }
+
+      console.log('🔄 Fetching stages for project:', projectName, 'ID:', selectedProjectData.id);
+      const response = await taskManagementServices.getStagesList(selectedProjectData.id);
+
+      if (response.status === 'success') {
+        console.log('✅ Project-specific stages fetched:', response.records.length);
+        setProjectStages(response.records);
+      } else {
+        console.log('❌ Failed to fetch project stages:', response.message);
+        setProjectStages(stages); // Fallback to default stages
+      }
+    } catch (error) {
+      console.error('❌ Error fetching project stages:', error);
+      setProjectStages(stages); // Fallback to default stages
+    } finally {
+      setProjectStagesLoading(false);
+    }
+  }, [projects, stages]);
+
   // Refetch function
   const refetch = () => {
     fetchTasks()
@@ -252,6 +291,10 @@ export default function BoardPage() {
 
   // Import functionality state
   const [importLoading, setImportLoading] = useState(false)
+
+  // Project-specific stages state
+  const [projectStages, setProjectStages] = useState<ApiStage[]>([])
+  const [projectStagesLoading, setProjectStagesLoading] = useState(false)
 
   // Helper function to get current quarter date range
   const getCurrentQuarterRange = () => {
@@ -448,6 +491,21 @@ export default function BoardPage() {
     }
   }, [selectedProject])
 
+  // Fetch project-specific stages when selected project or projects change
+  useEffect(() => {
+    console.log('🔍 Effect triggered:', {
+      projectsLength: projects.length,
+      stagesLength: stages.length,
+      selectedProject,
+      shouldFetch: projects.length > 0 && stages.length > 0
+    });
+
+    if (projects.length > 0 && stages.length > 0) {
+      console.log('🔄 Fetching project-specific stages for:', selectedProject);
+      fetchProjectStages(selectedProject);
+    }
+  }, [selectedProject, projects, stages, fetchProjectStages])
+
 
 
 
@@ -469,8 +527,20 @@ export default function BoardPage() {
   }, [statuses])
 
   const stageColumns = useMemo(() => {
-    if (stages.length > 0) {
-      return stages.map(stage => ({
+    // Use project-specific stages if available, otherwise fall back to default stages
+    const stagesToUse = projectStages.length > 0 ? projectStages : stages;
+
+    console.log('🔍 Stage columns calculation:', {
+      projectStagesCount: projectStages.length,
+      defaultStagesCount: stages.length,
+      stagesToUseCount: stagesToUse.length,
+      selectedProject,
+      projectStages: projectStages.map(s => s.title),
+      defaultStages: stages.map(s => s.title)
+    });
+
+    if (stagesToUse.length > 0) {
+      return stagesToUse.map(stage => ({
         id: stage.title.toLowerCase().replace(/\s+/g, ''),
         title: stage.title
       }));
@@ -482,7 +552,7 @@ export default function BoardPage() {
       { id: 'development', title: 'Development' },
       { id: 'qa', title: 'QA' },
     ];
-  }, [stages])
+  }, [stages, projectStages, selectedProject])
 
   // Group tasks by status or stage using API data
   const groupedTasks = useMemo(() => {
@@ -610,7 +680,7 @@ export default function BoardPage() {
 
       return stageGrouped;
     }
-  }, [apiTasks, viewMode, searchQuery, selectedProject, dateRange, stages, statuses])
+  }, [apiTasks, viewMode, searchQuery, selectedProject, dateRange, stages, statuses, projectStages])
 
   const columns = viewMode === 'status' ? statusColumns : stageColumns
 
