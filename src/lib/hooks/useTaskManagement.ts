@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { taskManagementServices, Task, Project, ApiResponse, ApiStage, ApiStatus } from '../services/taskManagementServices';
+import { taskManagementServices, Task, Project, ApiResponse, ApiStage, ApiStatus, ApiPriority, ApiTeamMember } from '../services/taskManagementServices';
 
 // Demo data for when API is not available
 const demoTasks: Task[] = [
@@ -109,18 +109,27 @@ interface UseTaskManagementReturn {
   tasks: Task[];
   projects: Project[];
   stages: ApiStage[];
+  statuses: ApiStatus[];
+  priorities: ApiPriority[];
+  teamMembers: ApiTeamMember[];
 
   // Loading states
   loading: boolean;
   tasksLoading: boolean;
   projectsLoading: boolean;
   stagesLoading: boolean;
+  statusesLoading: boolean;
+  prioritiesLoading: boolean;
+  teamMembersLoading: boolean;
 
   // Error states
   error: string | null;
   tasksError: string | null;
   projectsError: string | null;
   stagesError: string | null;
+  statusesError: string | null;
+  prioritiesError: string | null;
+  teamMembersError: string | null;
   
   // Grouped data
   groupedByStatus: {
@@ -167,20 +176,29 @@ export const useTaskManagement = (options: UseTaskManagementOptions = {}): UseTa
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [stages, setStages] = useState<ApiStage[]>([]);
+  const [statuses, setStatuses] = useState<ApiStatus[]>([]);
+  const [priorities, setPriorities] = useState<ApiPriority[]>([]);
+  const [teamMembers, setTeamMembers] = useState<ApiTeamMember[]>([]);
 
   // Loading states
   const [tasksLoading, setTasksLoading] = useState(false);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [stagesLoading, setStagesLoading] = useState(false);
+  const [statusesLoading, setStatusesLoading] = useState(false);
+  const [prioritiesLoading, setPrioritiesLoading] = useState(false);
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false);
 
   // Error states
   const [tasksError, setTasksError] = useState<string | null>(null);
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [stagesError, setStagesError] = useState<string | null>(null);
+  const [statusesError, setStatusesError] = useState<string | null>(null);
+  const [prioritiesError, setPrioritiesError] = useState<string | null>(null);
+  const [teamMembersError, setTeamMembersError] = useState<string | null>(null);
 
   // Computed states
-  const loading = tasksLoading || projectsLoading || stagesLoading;
-  const error = tasksError || projectsError || stagesError;
+  const loading = tasksLoading || projectsLoading || stagesLoading || statusesLoading || prioritiesLoading || teamMembersLoading;
+  const error = tasksError || projectsError || stagesError || statusesError || prioritiesError || teamMembersError;
   
   // Get user ID
   const getUserId = useCallback(() => {
@@ -272,19 +290,175 @@ export const useTaskManagement = (options: UseTaskManagementOptions = {}): UseTa
     }
   }, []);
 
+  // Fetch statuses
+  const fetchStatuses = useCallback(async () => {
+    setStatusesLoading(true);
+    setStatusesError(null);
+
+    try {
+      const response = await taskManagementServices.getStatusList();
+
+      if (response.status === 'success') {
+        setStatuses(response.records);
+      } else {
+        setStatusesError(response.message);
+        setStatuses(response.records); // Use fallback data
+      }
+    } catch (error) {
+      setStatusesError('Failed to fetch statuses');
+      // Set fallback statuses
+      setStatuses([
+        { id: '1', name: 'Pending' },
+        { id: '2', name: 'On-going' },
+        { id: '3', name: 'Completed' }
+      ]);
+    } finally {
+      setStatusesLoading(false);
+    }
+  }, []);
+
+  // Fetch priorities
+  const fetchPriorities = useCallback(async () => {
+    setPrioritiesLoading(true);
+    setPrioritiesError(null);
+
+    try {
+      const response = await taskManagementServices.getPrioritiesList();
+
+      if (response.status === 'success') {
+        setPriorities(response.records);
+      } else {
+        setPrioritiesError(response.message);
+        setPriorities(response.records); // Use fallback data
+      }
+    } catch (error) {
+      setPrioritiesError('Failed to fetch priorities');
+      // Set fallback priorities
+      setPriorities([
+        { id: '1', name: 'Low' },
+        { id: '2', name: 'Medium' },
+        { id: '3', name: 'High' }
+      ]);
+    } finally {
+      setPrioritiesLoading(false);
+    }
+  }, []);
+
+  // Fetch team members
+  const fetchTeamMembers = useCallback(async () => {
+    setTeamMembersLoading(true);
+    setTeamMembersError(null);
+
+    try {
+      const response = await taskManagementServices.getTeamMembersList(providedEmail);
+
+      if (response.status === 'success') {
+        setTeamMembers(response.records);
+      } else {
+        setTeamMembersError(response.message);
+        setTeamMembers([]);
+      }
+    } catch (error) {
+      setTeamMembersError('Failed to fetch team members');
+      setTeamMembers([]);
+    } finally {
+      setTeamMembersLoading(false);
+    }
+  }, [providedEmail]);
+
   // Refetch all data
   const refetch = useCallback(async () => {
     console.log('🔄 refetch called with email:', providedEmail, 'dateRange:', dateRange);
-    await Promise.all([fetchTasks(), fetchProjects(), fetchStages()]);
-  }, [fetchTasks, fetchProjects, fetchStages, providedEmail, dateRange]);
+    await Promise.all([
+      fetchTasks(),
+      fetchProjects(),
+      fetchStages(),
+      fetchStatuses(),
+      fetchPriorities(),
+      fetchTeamMembers()
+    ]);
+  }, [fetchTasks, fetchProjects, fetchStages, fetchStatuses, fetchPriorities, fetchTeamMembers, providedEmail, dateRange]);
   
   // Create task
   const createTask = useCallback(async (taskData: Omit<Task, 'id' | 'created_at' | 'updated_at'>): Promise<boolean> => {
     try {
       const response = await taskManagementServices.createTask(taskData);
-      
+
       if (response.status === 'success') {
-        await fetchTasks(); // Refresh tasks list
+        // Check if this is a mock response (contains "mock response" in the message)
+        const isMockResponse = response.message.toLowerCase().includes('mock response');
+
+        console.log('🔍 Task creation response analysis:', {
+          status: response.status,
+          message: response.message,
+          isMockResponse: isMockResponse
+        });
+
+        if (isMockResponse) {
+          // For mock responses, add the task to local state immediately
+          // Map numeric IDs to proper string values
+          const getStatusName = (statusId: any): string => {
+            if (typeof statusId === 'string') return statusId;
+            const statusMap: { [key: string]: string } = {
+              '1': 'pending',
+              '2': 'ongoing',
+              '3': 'completed'
+            };
+            return statusMap[statusId?.toString()] || 'pending';
+          };
+
+          const getStageName = (stageId: any): string => {
+            if (typeof stageId === 'string') return stageId;
+            const stageMap: { [key: string]: string } = {
+              '47': 'design',
+              '48': 'html',
+              '49': 'development',
+              '51': 'qa'
+            };
+            return stageMap[stageId?.toString()] || 'design';
+          };
+
+          const getPriorityName = (priorityId: any): string => {
+            if (typeof priorityId === 'string') return priorityId;
+            const priorityMap: { [key: string]: string } = {
+              '1': 'low',
+              '2': 'medium',
+              '3': 'high'
+            };
+            return priorityMap[priorityId?.toString()] || 'medium';
+          };
+
+          const mockTask: Task = {
+            id: Math.floor(Math.random() * 10000) + 1000,
+            title: taskData.title,
+            description: taskData.description || '',
+            status: getStatusName(taskData.status),
+            stage: getStageName(taskData.stage),
+            priority: getPriorityName(taskData.priority),
+            assigned_to: taskData.assigned_to || [],
+            project: typeof taskData.project === 'string' ? taskData.project : taskData.project?.name || 'Unknown',
+            tags: [],
+            progress: 0,
+            due_date: taskData.due_date || '',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+
+          console.log('🔍 Mock task creation debug:', {
+            originalStage: taskData.stage,
+            mappedStage: getStageName(taskData.stage),
+            originalStatus: taskData.status,
+            mappedStatus: getStatusName(taskData.status)
+          });
+
+          // Add the mock task to the current tasks list
+          setTasks(prevTasks => [...prevTasks, mockTask]);
+          console.log('✅ Mock task added to local state:', mockTask);
+        } else {
+          // For real API responses, refresh the tasks list
+          await fetchTasks();
+        }
+
         return true;
       } else {
         setTasksError(response.message);
@@ -411,18 +585,27 @@ export const useTaskManagement = (options: UseTaskManagementOptions = {}): UseTa
     tasks,
     projects,
     stages,
+    statuses,
+    priorities,
+    teamMembers,
 
     // Loading states
     loading,
     tasksLoading,
     projectsLoading,
     stagesLoading,
+    statusesLoading,
+    prioritiesLoading,
+    teamMembersLoading,
 
     // Error states
     error,
     tasksError,
     projectsError,
     stagesError,
+    statusesError,
+    prioritiesError,
+    teamMembersError,
 
     // Grouped data
     groupedByStatus,

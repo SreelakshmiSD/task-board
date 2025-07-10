@@ -57,6 +57,16 @@ export interface ApiStatus {
   name: string;
 }
 
+export interface ApiPriority {
+  id: string;
+  name: string;
+}
+
+export interface ApiPriority {
+  id: string;
+  name: string;
+}
+
 // Task interfaces
 export interface Task {
   id: number;
@@ -260,13 +270,42 @@ export const taskManagementServices = {
   // Create new task
   createTask: async (taskData: Omit<Task, 'id' | 'created_at' | 'updated_at'>): Promise<ApiResponse<Task>> => {
     try {
-      const response = await axiosInstance.post('/tasks/', taskData);
-      
-      if (response.data.status === 'success') {
+      // Get authenticated user email
+      const userEmail = await getAuthenticatedUserEmail();
+
+      if (!userEmail) {
+        return {
+          status: 'failure',
+          message: 'No authenticated user email found',
+          records: {} as Task
+        };
+      }
+
+      // Prepare data for the create-task-common endpoint
+      const createTaskData = {
+        email: userEmail,
+        title: taskData.title,
+        description: taskData.description || '',
+        project: typeof taskData.project === 'object' ? taskData.project.id : taskData.project,
+        status: typeof taskData.status === 'object' ? taskData.status.id : taskData.status,
+        stage: typeof taskData.stage === 'object' ? taskData.stage.id : taskData.stage,
+        priority: typeof taskData.priority === 'object' ? taskData.priority.id : taskData.priority,
+        assigned_to: taskData.assigned_to || [],
+        due_date: taskData.due_date || null
+      };
+
+      // Call the create-task API route
+      const response = await axiosInstance.post('/create-task', createTaskData);
+      console.log("williom -----------------------create task response:", response);
+
+      // Check for both 'status' and 'result' fields for success
+      const isSuccess = response.data.status === 'success' || response.data.result === 'success';
+
+      if (isSuccess) {
         return {
           status: 'success',
-          message: response.data.message || 'Task created successfully',
-          records: response.data.records
+          message: response.data.message || 'Task created successfully via real API',
+          records: response.data.records || response.data.task || {}
         };
       } else {
         return {
@@ -652,6 +691,50 @@ export const taskManagementServices = {
         status: 'failure',
         message: 'Network error occurred while fetching statuses - using fallback data',
         records: fallbackStatuses
+      };
+    }
+  },
+
+  // Get priorities list from masters-list API
+  getPrioritiesList: async (): Promise<ApiResponse<ApiPriority[]>> => {
+    try {
+      console.log('🔄 Fetching priorities from masters-list API...');
+
+      const response = await axiosInstance.get('/masters-list', {
+        params: {
+          action: 'task_priority'
+        }
+      });
+
+      if (response.data.status === 'success') {
+        console.log('✅ Priorities fetched successfully:', response.data.records?.length || 0);
+        return {
+          status: 'success',
+          message: response.data.message || 'Priorities fetched successfully',
+          records: response.data.records || []
+        };
+      } else {
+        console.log('❌ Priorities API error:', response.data.message);
+        return {
+          status: 'failure',
+          message: response.data.message || 'Failed to fetch priorities',
+          records: []
+        };
+      }
+    } catch (error) {
+      console.error('❌ Error fetching priorities:', error);
+
+      // Fallback to default priorities if API fails
+      const fallbackPriorities: ApiPriority[] = [
+        { id: '1', name: 'Low' },
+        { id: '2', name: 'Medium' },
+        { id: '3', name: 'High' }
+      ];
+
+      return {
+        status: 'failure',
+        message: 'Network error occurred while fetching priorities - using fallback data',
+        records: fallbackPriorities
       };
     }
   }

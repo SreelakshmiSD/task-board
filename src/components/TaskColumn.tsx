@@ -2,17 +2,19 @@ import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Task, Employee } from '@/utils/api'
 import TaskCard from './TaskCard'
-import { Plus, ArrowRight, ArrowLeft } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import CreateTaskModal from "./CreateTaskModal";
+import { Plus, ArrowRight, ArrowLeft } from "lucide-react";
+import { useState, useEffect } from "react";
 
 interface TaskColumnProps {
-  id: string
-  title: string
-  tasks: Task[]
-  employees: Employee[]
-  onTaskClick?: (task: Task) => void
-  onAddTask?: () => void
-  viewMode?: 'status' | 'stage'
+  id: string;
+  title: string;
+  tasks: Task[];
+  employees: Employee[];
+  onTaskClick?: (task: Task) => void;
+  onAddTask?: () => void;
+  onTaskCreated?: () => void; // Callback to refresh task list after creation
+  viewMode?: "status" | "stage";
 }
 
 export default function TaskColumn({
@@ -22,40 +24,57 @@ export default function TaskColumn({
   employees,
   onTaskClick,
   onAddTask,
-  viewMode = 'status'
+  onTaskCreated,
+  viewMode = "status",
 }: TaskColumnProps) {
   // Initialize state from localStorage or default to false
   const [isCollapsed, setIsCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(`column-collapsed-${id}`)
-      return saved ? JSON.parse(saved) : false
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(`column-collapsed-${id}`);
+      return saved ? JSON.parse(saved) : false;
     }
-    return false
-  })
+    return false;
+  });
+
+  // State for create task modal
+  const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
 
   const { setNodeRef, isOver } = useDroppable({
     id,
-  })
+  });
+
+  // Handle add task click
+  const handleAddTask = () => {
+    if (onAddTask) {
+      onAddTask();
+    } else {
+      // Open our create task modal with the column's status/stage pre-selected
+      setIsCreateTaskModalOpen(true);
+    }
+  };
 
   // Save to localStorage whenever isCollapsed changes
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(`column-collapsed-${id}`, JSON.stringify(isCollapsed))
+    if (typeof window !== "undefined") {
+      localStorage.setItem(
+        `column-collapsed-${id}`,
+        JSON.stringify(isCollapsed)
+      );
     }
-  }, [isCollapsed, id])
+  }, [isCollapsed, id]);
 
   const getColumnColor = (columnId: string) => {
     const colors: Record<string, string> = {
-      'pending': 'border-t-gray-400',
-      'ongoing': 'border-t-blue-500',
-      'completed': 'border-t-green-500',
-      'design': 'border-t-pink-500',
-      'html': 'border-t-orange-500',
-      'development': 'border-t-purple-500',
-      'qa': 'border-t-indigo-500',
-    }
-    return colors[columnId] || 'border-t-gray-400'
-  }
+      pending: "border-t-gray-400",
+      ongoing: "border-t-blue-500",
+      completed: "border-t-green-500",
+      design: "border-t-pink-500",
+      html: "border-t-orange-500",
+      development: "border-t-purple-500",
+      qa: "border-t-indigo-500",
+    };
+    return colors[columnId] || "border-t-gray-400";
+  };
 
   return (
     <div
@@ -63,15 +82,20 @@ export default function TaskColumn({
       className={`
         flex flex-col bg-gray-50 rounded-lg h-full
         transition-all duration-300 ease-in-out
-        ${isCollapsed
-          ? 'min-w-16 max-w-16 w-16'
-          : 'min-w-80 max-w-80 sm:min-w-72 sm:max-w-72 md:min-w-80 md:max-w-80'
+        ${
+          isCollapsed
+            ? "min-w-16 max-w-16 w-16"
+            : "min-w-80 max-w-80 sm:min-w-72 sm:max-w-72 md:min-w-80 md:max-w-80"
         }
-        ${isOver ? 'bg-blue-50 border-2 border-dashed border-blue-300' : ''}
+        ${isOver ? "bg-blue-50 border-2 border-dashed border-blue-300" : ""}
       `}
     >
       {/* Column Header */}
-      <div className={`border-t-4 ${getColumnColor(id)} bg-white rounded-t-lg ${isCollapsed ? 'p-2' : 'p-4'}`}>
+      <div
+        className={`border-t-4 ${getColumnColor(id)} bg-white rounded-t-lg ${
+          isCollapsed ? "p-2" : "p-4"
+        }`}
+      >
         {isCollapsed ? (
           // Collapsed Header - Vertical Layout
           <div className="flex flex-col items-center h-full">
@@ -85,7 +109,7 @@ export default function TaskColumn({
             <div className="flex-1 flex items-center justify-center">
               <div
                 className="writing-mode-vertical text-sm font-semibold text-gray-900 whitespace-nowrap"
-                style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
+                style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
               >
                 {title}
               </div>
@@ -114,7 +138,7 @@ export default function TaskColumn({
                 {tasks.length}
               </span>
               <button
-                onClick={onAddTask}
+                onClick={handleAddTask}
                 className="p-1 hover:bg-gray-100 rounded transition-colors"
                 title="Add new task"
               >
@@ -128,7 +152,10 @@ export default function TaskColumn({
       {/* Column Content */}
       {!isCollapsed && (
         <div className="flex-1 p-3 space-y-3 overflow-y-auto">
-          <SortableContext items={tasks.map(task => task.id)} strategy={verticalListSortingStrategy}>
+          <SortableContext
+            items={tasks.map((task) => task.id)}
+            strategy={verticalListSortingStrategy}
+          >
             {tasks.map((task) => (
               <TaskCard
                 key={task.id}
@@ -159,6 +186,15 @@ export default function TaskColumn({
           )}
         </div>
       )}
+
+      {/* Create Task Modal */}
+      <CreateTaskModal
+        isOpen={isCreateTaskModalOpen}
+        onClose={() => setIsCreateTaskModalOpen(false)}
+        initialStatus={viewMode === "status" ? id : undefined}
+        initialStage={viewMode === "stage" ? id : undefined}
+        onTaskCreated={onTaskCreated}
+      />
     </div>
-  )
+  );
 }
