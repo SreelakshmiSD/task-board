@@ -31,76 +31,84 @@ import SideMenu from '@/components/SideMenu'
 import { Calendar, Import, MoreHorizontal, LogOut, User } from 'lucide-react'
 
 export default function BoardPage() {
-  const { data: session, status } = useSession()
-  const router = useRouter()
+  const { data: session, status } = useSession();
+  const router = useRouter();
 
   // Helper functions to extract string values from API objects
   const getStatusValue = (status: any): string => {
-    if (typeof status === 'string') return status
-    if (status && typeof status === 'object' && status.value) return status.value
-    return 'pending' // default
-  }
+    if (typeof status === "string") return status;
+    if (status && typeof status === "object" && status.value)
+      return status.value;
+    return "pending"; // default
+  };
 
   const getStageValue = (stage: any): string => {
-    if (typeof stage === 'string') return stage
-    if (stage && typeof stage === 'object' && stage.value) return stage.value
-    return 'design' // default
-  }
+    if (typeof stage === "string") return stage;
+    if (stage && typeof stage === "object" && stage.value) return stage.value;
+    return "design"; // default
+  };
 
   // Get user email from session
-  const userEmail = session?.user?.email
+  const userEmail = session?.user?.email;
   // console.log('🔍 BoardPage - Session status:', status, 'userEmail:', userEmail);
   // console.log('🔍 BoardPage - Session object:', session);
 
   // Simple API integration without hooks to prevent infinite loops
-  const [apiTasks, setApiTasks] = useState<Task[]>([])
-  const [apiLoading, setApiLoading] = useState(false)
-  const [apiError, setApiError] = useState<string | null>(null)
-  const [projects, setProjects] = useState<any[]>([])
+  const [apiTasks, setApiTasks] = useState<Task[]>([]);
+  const [apiLoading, setApiLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [projects, setProjects] = useState<any[]>([]);
 
   // Fetch stages and statuses dynamically (will be updated with project filtering later)
-  const { stages, loading: stagesLoading, error: stagesError } = useStages()
-  const { statuses, loading: statusesLoading, error: statusesError } = useStatuses()
+  const { stages, loading: stagesLoading, error: stagesError } = useStages();
+  const {
+    statuses,
+    loading: statusesLoading,
+    error: statusesError,
+  } = useStatuses();
 
   // Task overview state
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
-  const [isTaskOverviewOpen, setIsTaskOverviewOpen] = useState(false)
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [isTaskOverviewOpen, setIsTaskOverviewOpen] = useState(false);
 
   // Task overview handlers
   const handleTaskClick = (task: any) => {
     // Convert the task to our Task type if needed
     const convertedTask: Task = {
       ...task,
-      assigned_to: task.assigned_to?.map((id: any) => String(id)) || []
-    }
-    setSelectedTask(convertedTask)
-    setIsTaskOverviewOpen(true)
-  }
+      assigned_to: task.assigned_to?.map((id: any) => String(id)) || [],
+    };
+    setSelectedTask(convertedTask);
+    setIsTaskOverviewOpen(true);
+  };
 
   const handleCloseTaskOverview = () => {
-    setIsTaskOverviewOpen(false)
-    setSelectedTask(null)
-  }
+    setIsTaskOverviewOpen(false);
+    setSelectedTask(null);
+  };
 
   // Side menu handlers
-  const handleMenuItemSelect = (item: 'project' | 'task') => {
-    setSelectedMenuItem(item)
-    console.log('🔍 Selected menu item:', item)
+  const handleMenuItemSelect = (item: "project" | "task") => {
+    setSelectedMenuItem(item);
+    console.log("🔍 Selected menu item:", item);
 
     // Navigate to appropriate page
-    if (item === 'project') {
-      router.push('/projects')
-    } else if (item === 'task') {
-      router.push('/board')
+    if (item === "project") {
+      router.push("/projects");
+    } else if (item === "task") {
+      router.push("/board");
     }
-  }
+  };
 
   // Helper function to format date range for API
-  const formatDateRange = (startDate: Date | null, endDate: Date | null): string | undefined => {
+  const formatDateRange = (
+    startDate: Date | null,
+    endDate: Date | null
+  ): string | undefined => {
     if (!startDate || !endDate) return undefined;
 
     const formatDate = (date: Date): string => {
-      return date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+      return date.toISOString().split("T")[0]; // Format as YYYY-MM-DD
     };
 
     return `${formatDate(startDate)} to ${formatDate(endDate)}`;
@@ -109,82 +117,111 @@ export default function BoardPage() {
   // Fetch tasks function
   const fetchTasks = async () => {
     if (!userEmail) {
-      setApiError('No user email available')
-      return
+      setApiError("No user email available");
+      return;
     }
 
     // If no projects are available for the selected date range, don't fetch tasks
     if (projects.length === 0) {
-      console.log('🚫 No projects available for date range, skipping task fetch')
-      setApiTasks([])
-      setApiLoading(false)
-      return
+      console.log(
+        "🚫 No projects available for date range, skipping task fetch"
+      );
+      setApiTasks([]);
+      setApiLoading(false);
+      return;
     }
 
-    setApiLoading(true)
-    setApiError(null)
+    setApiLoading(true);
+    setApiError(null);
 
     try {
       // Build URL with date range parameter
       let url = `/api/tasks-list?email=${encodeURIComponent(userEmail)}`;
 
-      const formattedDateRange = formatDateRange(dateRange.startDate, dateRange.endDate);
+      const formattedDateRange = formatDateRange(
+        dateRange.startDate,
+        dateRange.endDate
+      );
       if (formattedDateRange) {
         url += `&date_range=${encodeURIComponent(formattedDateRange)}`;
       }
 
       // Add project filter if a project is selected
-      if (selectedProject && selectedProject !== '') {
+      if (selectedProject && selectedProject !== "") {
         // Find the project ID from the selected project name
-        const selectedProjectData = projects.find(p => p.name === selectedProject);
+        const selectedProjectData = projects.find(
+          (p) => p.name === selectedProject
+        );
         if (selectedProjectData) {
           url += `&project=${encodeURIComponent(selectedProjectData.id)}`;
-          console.log('🎯 Adding project filter:', selectedProjectData.id, 'for project:', selectedProject);
+          console.log(
+            "🎯 Adding project filter:",
+            selectedProjectData.id,
+            "for project:",
+            selectedProject
+          );
         }
       }
 
-      console.log('🔍 Fetching tasks with URL:', url);
+      console.log("🔍 Fetching tasks with URL:", url);
 
-      const response = await fetch(url)
-      const data = await response.json()
+      const response = await fetch(url);
+      const data = await response.json();
 
-      if (data.result === 'success') {
-        setApiTasks(data.records)
+      console.log("🔍 Tasks API response structure:", {
+        result: data.result,
+        recordsCount: data.records?.length,
+        hasRecords: !!data.records,
+      });
 
+      if (data.result === "success") {
+        console.log("✅ Setting API tasks:", data.records.length, "tasks");
+        setApiTasks(data.records);
+        console.log("✅ API tasks set successfully");
       } else {
-        setApiError(data.message || 'Failed to fetch tasks')
+        console.log("❌ API result not success:", data.result);
+        setApiError(data.message || "Failed to fetch tasks");
       }
     } catch (err) {
-      setApiError('Error fetching tasks')
-      console.error('Error fetching tasks:', err)
+      setApiError("Error fetching tasks");
+      console.error("Error fetching tasks:", err);
     } finally {
-      setApiLoading(false)
+      setApiLoading(false);
     }
-  }
+  };
 
   // Fetch projects function
   const fetchProjects = async () => {
+    console.log("🔍 fetchProjects called with userEmail:", userEmail);
     if (!userEmail) {
-      console.log('No user email available for projects')
-      return
+      console.log("No user email available for projects");
+      return;
     }
 
     try {
       // Build URL with date range parameter
       let url = `/api/project-list?email=${encodeURIComponent(userEmail)}`;
 
-      const formattedDateRange = formatDateRange(dateRange.startDate, dateRange.endDate);
+      const formattedDateRange = formatDateRange(
+        dateRange.startDate,
+        dateRange.endDate
+      );
       if (formattedDateRange) {
         url += `&date_range=${encodeURIComponent(formattedDateRange)}`;
       }
 
-      console.log('🔄 Fetching projects for email:', userEmail, 'with URL:', url)
-      const response = await fetch(url)
-      const data = await response.json()
+      console.log(
+        "🔄 Fetching projects for email:",
+        userEmail,
+        "with URL:",
+        url
+      );
+      const response = await fetch(url);
+      const data = await response.json();
 
-      console.log('📥 Projects API response:', data)
+      console.log("📥 Projects API response:", data);
 
-      if (data.result === 'success' && Array.isArray(data.records)) {
+      if (data.result === "success" && Array.isArray(data.records)) {
         // Transform API projects to match the expected format
         const transformedProjects = data.records.map((project: any) => ({
           id: project.id,
@@ -192,181 +229,257 @@ export default function BoardPage() {
           description: project.description,
           status: project.status?.value || project.status,
           created_at: project.created_at,
-          updated_at: project.updated_at || project.created_at
-        }))
-        console.log('✅ Setting projects:', transformedProjects, 'Count:', transformedProjects.length)
-        setProjects(transformedProjects)
+          updated_at: project.updated_at || project.created_at,
+        }));
+        console.log(
+          "✅ Setting projects:",
+          transformedProjects,
+          "Count:",
+          transformedProjects.length
+        );
+        setProjects(transformedProjects);
 
         // Auto-select first project if none is currently selected
-        if (transformedProjects.length > 0 && (!selectedProject || selectedProject === '' || selectedProject === 'all')) {
+        if (
+          transformedProjects.length > 0 &&
+          (!selectedProject ||
+            selectedProject === "" ||
+            selectedProject === "all")
+        ) {
           const firstProject = transformedProjects[0].name;
-          console.log('🎯 Auto-selecting first project immediately after fetch:', firstProject);
+          console.log(
+            "🎯 Auto-selecting first project immediately after fetch:",
+            firstProject
+          );
           // Use setTimeout to ensure state update happens after render
           setTimeout(() => {
             setSelectedProject(firstProject);
           }, 0);
         } else if (transformedProjects.length === 0) {
           // Clear selected project if no projects available for this date range
-          console.log('🚫 No projects found for date range, clearing selection')
-          setSelectedProject('')
+          console.log(
+            "🚫 No projects found for date range, clearing selection"
+          );
+          setSelectedProject("");
         }
       } else {
-        console.log('❌ Projects API error:', data.message || 'No records found')
-        setProjects([])
+        console.log(
+          "❌ Projects API error:",
+          data.message || "No records found"
+        );
+        setProjects([]);
         // Clear selected project if no projects available
-        setSelectedProject('')
+        setSelectedProject("");
       }
     } catch (err) {
-      console.error('Error fetching projects:', err)
-      setProjects([])
+      console.error("Error fetching projects:", err);
+      setProjects([]);
     }
-  }
+  };
 
-  // Update task function
+  // Update task function with real API integration
   const updateApiTask = async (taskId: string, updateData: any) => {
-    try {
-      // For now, just update locally (you can implement API update later)
-      console.log('Updating task:', taskId, updateData)
-      return true
-    } catch (err) {
-      console.error('Error updating task:', err)
-      return false
+    if (!userEmail) {
+      console.error("No user email available for task update");
+      return false;
     }
-  }
+
+    try {
+      console.log("🔄 Updating task via API:", taskId, updateData);
+
+      const requestBody = {
+        email: userEmail,
+        task_id: taskId,
+        ...updateData,
+      };
+
+      const response = await fetch("/api/update-task-status", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("❌ API update failed:", errorData);
+        return false;
+      }
+
+      const result = await response.json();
+      console.log("✅ Task updated successfully:", result);
+
+      // Refresh tasks to get updated data
+      await fetchTasks();
+
+      return true;
+    } catch (err) {
+      console.error("❌ Error updating task:", err);
+      return false;
+    }
+  };
 
   // Fetch project-specific stages
-  const fetchProjectStages = useCallback(async (projectName: string) => {
-    console.log('🔍 fetchProjectStages called with:', { projectName, projectsCount: projects.length });
+  const fetchProjectStages = useCallback(
+    async (projectName: string) => {
+      console.log("🔍 fetchProjectStages called with:", {
+        projectName,
+        projectsCount: projects.length,
+      });
 
-    if (!projectName || projectName === '' || projectName === 'all') {
-      // Use default stages from useStages hook
-      console.log('🔍 Using default stages, clearing project stages');
-      setProjectStages([]);
-      return;
-    }
-
-    setProjectStagesLoading(true);
-    try {
-      // Find project ID from project name
-      const selectedProjectData = projects.find(p => p.name === projectName);
-      if (!selectedProjectData) {
-        console.log('❌ Project not found:', projectName);
-        setProjectStages(stages); // Fallback to default stages
+      if (!projectName || projectName === "" || projectName === "all") {
+        // Use default stages from useStages hook
+        console.log("🔍 Using default stages, clearing project stages");
+        setProjectStages([]);
         return;
       }
 
-      console.log('🔄 Fetching stages for project:', projectName, 'ID:', selectedProjectData.id);
-      const response = await taskManagementServices.getStagesList(selectedProjectData.id);
+      setProjectStagesLoading(true);
+      try {
+        // Find project ID from project name
+        const selectedProjectData = projects.find(
+          (p) => p.name === projectName
+        );
+        if (!selectedProjectData) {
+          console.log("❌ Project not found:", projectName);
+          setProjectStages(stages); // Fallback to default stages
+          return;
+        }
 
-      if (response.status === 'success') {
-        console.log('✅ Project-specific stages fetched:', response.records.length);
-        setProjectStages(response.records);
-      } else {
-        console.log('❌ Failed to fetch project stages:', response.message);
+        console.log(
+          "🔄 Fetching stages for project:",
+          projectName,
+          "ID:",
+          selectedProjectData.id
+        );
+        const response = await taskManagementServices.getStagesList(
+          selectedProjectData.id
+        );
+
+        if (response.status === "success") {
+          console.log(
+            "✅ Project-specific stages fetched:",
+            response.records.length
+          );
+          setProjectStages(response.records);
+        } else {
+          console.log("❌ Failed to fetch project stages:", response.message);
+          setProjectStages(stages); // Fallback to default stages
+        }
+      } catch (error) {
+        console.error("❌ Error fetching project stages:", error);
         setProjectStages(stages); // Fallback to default stages
+      } finally {
+        setProjectStagesLoading(false);
       }
-    } catch (error) {
-      console.error('❌ Error fetching project stages:', error);
-      setProjectStages(stages); // Fallback to default stages
-    } finally {
-      setProjectStagesLoading(false);
-    }
-  }, [projects, stages]);
+    },
+    [projects, stages]
+  );
 
   // Refetch function
   const refetch = () => {
-    fetchTasks()
-    fetchProjects()
-  }
+    fetchTasks();
+    fetchProjects();
+  };
 
   // State
-  const [employees, setEmployees] = useState<Employee[]>([])
-  const [loading, setLoading] = useState(false) // Start with false to reduce initial loading
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedProject, setSelectedProject] = useState('')
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loading, setLoading] = useState(false); // Start with false to reduce initial loading
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedProject, setSelectedProject] = useState("");
 
-  const [viewMode, setViewMode] = useState<'status' | 'stage'>('stage')
-  const [draggedTask, setDraggedTask] = useState<Task | null>(null)
-  const [selectedMenuItem, setSelectedMenuItem] = useState<'project' | 'task'>('task')
+  const [viewMode, setViewMode] = useState<"status" | "stage">("stage");
+  const [draggedTask, setDraggedTask] = useState<Task | null>(null);
+  const [updatingTaskId, setUpdatingTaskId] = useState<number | null>(null);
+  const [selectedMenuItem, setSelectedMenuItem] = useState<"project" | "task">(
+    "task"
+  );
 
   // Import functionality state
-  const [importLoading, setImportLoading] = useState(false)
+  const [importLoading, setImportLoading] = useState(false);
 
   // Project-specific stages state
-  const [projectStages, setProjectStages] = useState<ApiStage[]>([])
-  const [projectStagesLoading, setProjectStagesLoading] = useState(false)
+  const [projectStages, setProjectStages] = useState<ApiStage[]>([]);
+  const [projectStagesLoading, setProjectStagesLoading] = useState(false);
 
   // Helper function to get current quarter date range
   const getCurrentQuarterRange = () => {
-    const now = new Date()
-    const currentYear = now.getFullYear()
-    const currentMonth = now.getMonth() // 0-based
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0-based
 
     // Determine current quarter
-    const quarter = Math.floor(currentMonth / 3) + 1
+    const quarter = Math.floor(currentMonth / 3) + 1;
 
-    let startMonth: number
-    let endMonth: number
+    let startMonth: number;
+    let endMonth: number;
 
     switch (quarter) {
       case 1: // Q1: Jan-Mar
-        startMonth = 0
-        endMonth = 2
-        break
+        startMonth = 0;
+        endMonth = 2;
+        break;
       case 2: // Q2: Apr-Jun
-        startMonth = 3
-        endMonth = 5
-        break
+        startMonth = 3;
+        endMonth = 5;
+        break;
       case 3: // Q3: Jul-Sep
-        startMonth = 6
-        endMonth = 8
-        break
+        startMonth = 6;
+        endMonth = 8;
+        break;
       case 4: // Q4: Oct-Dec
-        startMonth = 9
-        endMonth = 11
-        break
+        startMonth = 9;
+        endMonth = 11;
+        break;
       default:
-        startMonth = 0
-        endMonth = 2
+        startMonth = 0;
+        endMonth = 2;
     }
 
-    const startDate = new Date(currentYear, startMonth, 1)
-    const endDate = new Date(currentYear, endMonth + 1, 0) // Last day of the month
+    const startDate = new Date(currentYear, startMonth, 1);
+    const endDate = new Date(currentYear, endMonth + 1, 0); // Last day of the month
 
-    return { startDate, endDate }
-  }
+    return { startDate, endDate };
+  };
 
   // Initialize with current quarter
-  const [dateRange, setDateRange] = useState<{startDate: Date | null, endDate: Date | null}>(
-    getCurrentQuarterRange()
-  )
+  const [dateRange, setDateRange] = useState<{
+    startDate: Date | null;
+    endDate: Date | null;
+  }>(getCurrentQuarterRange());
 
   // Import functionality handlers
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
+  const handleFileSelect = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
     // Validate file type
     const allowedTypes = [
-      'text/csv',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    ]
+      "text/csv",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ];
 
-    if (!allowedTypes.includes(file.type) && !file.name.match(/\.(csv|xlsx|xls)$/i)) {
-      alert('Please select a valid CSV or Excel file (.csv, .xlsx, .xls)')
-      event.target.value = '' // Reset the input
-      return
+    if (
+      !allowedTypes.includes(file.type) &&
+      !file.name.match(/\.(csv|xlsx|xls)$/i)
+    ) {
+      alert("Please select a valid CSV or Excel file (.csv, .xlsx, .xls)");
+      event.target.value = ""; // Reset the input
+      return;
     }
 
-    setImportLoading(true)
+    setImportLoading(true);
     try {
-      console.log('Importing file:', file.name, file.type)
+      console.log("Importing file:", file.name, file.type);
 
       // Create FormData for file upload
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('email', userEmail || '')
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("email", userEmail || "");
 
       // TODO: Replace with actual API call
       // const response = await fetch('/api/import-tasks', {
@@ -375,24 +488,24 @@ export default function BoardPage() {
       // })
 
       // Simulate import process
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Refresh tasks after import
-      fetchTasks()
+      fetchTasks();
 
-      console.log('Import completed successfully')
-      alert('Tasks imported successfully!')
+      console.log("Import completed successfully");
+      alert("Tasks imported successfully!");
     } catch (error) {
-      console.error('Import failed:', error)
-      alert('Import failed. Please try again.')
+      console.error("Import failed:", error);
+      alert("Import failed. Please try again.");
     } finally {
-      setImportLoading(false)
-      event.target.value = '' // Reset the input for next use
+      setImportLoading(false);
+      event.target.value = ""; // Reset the input for next use
     }
-  }
+  };
 
   // Use API tasks directly since we're now using the correct Task type
-  const tasks: Task[] = apiTasks
+  const tasks: Task[] = apiTasks;
 
   // console.log('🔍 BoardPage - API Tasks count:', apiTasks.length);
   // console.log('🔍 BoardPage - API Loading:', apiLoading);
@@ -410,32 +523,32 @@ export default function BoardPage() {
         distance: 8,
       },
     })
-  )
+  );
 
   // Redirect if not authenticated
   useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/signin')
+    if (status === "unauthenticated") {
+      router.push("/signin");
     }
-  }, [status, router])
+  }, [status, router]);
 
   // Load employees data (tasks are loaded via the hook)
   useEffect(() => {
     const loadEmployees = async () => {
       try {
-        setLoading(true)
-        const employeesData = await employeeAPI.getEmployees()
-        setEmployees(employeesData)
+        setLoading(true);
+        const employeesData = await employeeAPI.getEmployees();
+        setEmployees(employeesData);
       } catch (error) {
-        console.error('Error loading employees:', error)
-        setEmployees([])
+        console.error("Error loading employees:", error);
+        setEmployees([]);
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
-    if (status === 'authenticated') {
-      loadEmployees()
+    if (status === "authenticated") {
+      loadEmployees();
       // Auto-fetch tasks and projects when authenticated
       if (userEmail && !apiLoading) {
         if (apiTasks.length === 0) {
@@ -446,38 +559,57 @@ export default function BoardPage() {
       }
       // Email-based authentication - no need to set userId
     }
-  }, [status, userEmail])
+  }, [status, userEmail]);
 
   // Refetch data when date range changes
   useEffect(() => {
-    if (status === 'authenticated' && userEmail) {
-      console.log('🔄 Date range changed, refetching data:', dateRange);
+    if (status === "authenticated" && userEmail) {
+      console.log("🔄 Date range changed, refetching data:", dateRange);
       // Reset selected project when date range changes to trigger auto-selection
-      setSelectedProject('');
+      setSelectedProject("");
       fetchTasks();
       fetchProjects();
     }
-  }, [dateRange])
+  }, [dateRange]);
 
   // Auto-select first project when projects are loaded
   useEffect(() => {
-    console.log('🔍 Projects changed effect:', {
+    console.log("🔍 Projects changed effect:", {
       projectsCount: projects.length,
       currentSelectedProject: selectedProject,
-      projectNames: projects.map(p => p.name),
-      shouldAutoSelect: projects.length > 0 && (!selectedProject || selectedProject === '' || selectedProject === 'all')
+      projectNames: projects.map((p) => p.name),
+      shouldAutoSelect:
+        projects.length > 0 &&
+        (!selectedProject ||
+          selectedProject === "" ||
+          selectedProject === "all"),
     });
 
     if (projects.length > 0) {
       // Check if current selected project exists in the new projects list
-      const currentProjectExists = projects.some(p => p.name === selectedProject);
+      const currentProjectExists = projects.some(
+        (p) => p.name === selectedProject
+      );
 
-      if (!selectedProject || selectedProject === '' || selectedProject === 'all' || !currentProjectExists) {
+      if (
+        !selectedProject ||
+        selectedProject === "" ||
+        selectedProject === "all" ||
+        !currentProjectExists
+      ) {
         const firstProject = projects[0].name;
-        console.log('🎯 Auto-selecting first project in useEffect:', firstProject, 'Reason:', {
-          noSelection: !selectedProject || selectedProject === '' || selectedProject === 'all',
-          projectNotFound: !currentProjectExists
-        });
+        console.log(
+          "🎯 Auto-selecting first project in useEffect:",
+          firstProject,
+          "Reason:",
+          {
+            noSelection:
+              !selectedProject ||
+              selectedProject === "" ||
+              selectedProject === "all",
+            projectNotFound: !currentProjectExists,
+          }
+        );
         setSelectedProject(firstProject);
       }
     }
@@ -485,88 +617,94 @@ export default function BoardPage() {
 
   // Refetch tasks when selected project changes
   useEffect(() => {
-    if (status === 'authenticated' && userEmail && selectedProject) {
-      console.log('🔄 Selected project changed, refetching tasks for project:', selectedProject);
+    if (status === "authenticated" && userEmail && selectedProject) {
+      console.log(
+        "🔄 Selected project changed, refetching tasks for project:",
+        selectedProject
+      );
       fetchTasks();
     }
-  }, [selectedProject])
+  }, [selectedProject]);
 
   // Fetch project-specific stages when selected project or projects change
   useEffect(() => {
-    console.log('🔍 Effect triggered:', {
+    console.log("🔍 Effect triggered:", {
       projectsLength: projects.length,
       stagesLength: stages.length,
       selectedProject,
-      shouldFetch: projects.length > 0 && stages.length > 0
+      shouldFetch: projects.length > 0 && stages.length > 0,
     });
 
     if (projects.length > 0 && stages.length > 0) {
-      console.log('🔄 Fetching project-specific stages for:', selectedProject);
+      console.log("🔄 Fetching project-specific stages for:", selectedProject);
       fetchProjectStages(selectedProject);
     }
-  }, [selectedProject, projects, stages, fetchProjectStages])
-
-
-
-
+  }, [selectedProject, projects, stages, fetchProjectStages]);
 
   // Column configurations
   const statusColumns = useMemo(() => {
     if (statuses.length > 0) {
-      return statuses.map(status => ({
-        id: status.name.toLowerCase().replace(/\s+/g, '').replace('-', ''),
-        title: status.name
+      return statuses.map((status) => ({
+        id: status.name.toLowerCase().replace(/\s+/g, "").replace("-", ""),
+        title: status.name,
       }));
     }
     // Fallback to default statuses if API hasn't loaded yet
     return [
-      { id: 'pending', title: 'Pending' },
-      { id: 'ongoing', title: 'On-going' },
-      { id: 'completed', title: 'Completed' },
+      { id: "pending", title: "Pending" },
+      { id: "ongoing", title: "On-going" },
+      { id: "completed", title: "Completed" },
     ];
-  }, [statuses])
+  }, [statuses]);
 
   const stageColumns = useMemo(() => {
     // Use project-specific stages if available, otherwise fall back to default stages
     const stagesToUse = projectStages.length > 0 ? projectStages : stages;
 
-    console.log('🔍 Stage columns calculation:', {
+    console.log("🔍 Stage columns calculation:", {
       projectStagesCount: projectStages.length,
       defaultStagesCount: stages.length,
       stagesToUseCount: stagesToUse.length,
       selectedProject,
-      projectStages: projectStages.map(s => s.title),
-      defaultStages: stages.map(s => s.title)
+      projectStages: projectStages.map((s) => s.title),
+      defaultStages: stages.map((s) => s.title),
     });
 
     if (stagesToUse.length > 0) {
-      return stagesToUse.map(stage => ({
-        id: stage.title.toLowerCase().replace(/\s+/g, ''),
-        title: stage.title
+      return stagesToUse.map((stage) => ({
+        id: stage.title.toLowerCase().replace(/\s+/g, ""),
+        title: stage.title,
       }));
     }
     // Fallback to default stages if API hasn't loaded yet
     return [
-      { id: 'design', title: 'Design' },
-      { id: 'html', title: 'HTML' },
-      { id: 'development', title: 'Development' },
-      { id: 'qa', title: 'QA' },
+      { id: "design", title: "Design" },
+      { id: "html", title: "HTML" },
+      { id: "development", title: "Development" },
+      { id: "qa", title: "QA" },
     ];
-  }, [stages, projectStages, selectedProject])
+  }, [stages, projectStages, selectedProject]);
 
   // Group tasks by status or stage using API data
   const groupedTasks = useMemo(() => {
-    console.log('🔍 BoardPage - Grouping tasks. Total API tasks:', apiTasks.length);
+    console.log(
+      "🔍 BoardPage - Grouping tasks. Total API tasks:",
+      apiTasks.length
+    );
 
     // Debug specific task
-    const testTask = apiTasks.find(task => task.id === 5670);
+    const testTask = apiTasks.find((task) => task.id === 5670);
     if (testTask) {
-      console.log('🎯 Found test task 5670:', {
+      console.log("🎯 Found test task 5670:", {
         title: testTask.title,
         stage: testTask.stage,
         status: testTask.status,
-        stageValue: ((testTask.stage as any)?.value || testTask.stage)?.toLowerCase().trim(),
-        statusValue: ((testTask.status as any)?.value || testTask.status)?.toLowerCase().trim()
+        stageValue: ((testTask.stage as any)?.value || testTask.stage)
+          ?.toLowerCase()
+          .trim(),
+        statusValue: ((testTask.status as any)?.value || testTask.status)
+          ?.toLowerCase()
+          .trim(),
       });
     }
 
@@ -575,53 +713,74 @@ export default function BoardPage() {
       return taskList.filter((task) => {
         // Search filter
         if (searchQuery && searchQuery.trim()) {
-          const query = searchQuery.toLowerCase()
-          const title = task.title?.toLowerCase() || ''
-          const description = task.description?.toLowerCase() || ''
+          const query = searchQuery.toLowerCase();
+          const title = task.title?.toLowerCase() || "";
+          const description = task.description?.toLowerCase() || "";
           if (!title.includes(query) && !description.includes(query)) {
-            return false
+            return false;
           }
         }
 
         // Project filter - only filter if a specific project is selected
-        if (selectedProject && selectedProject !== 'all' && selectedProject !== '') {
-          const taskProjectName = typeof task.project === 'string' ? task.project : task.project?.value;
+        if (
+          selectedProject &&
+          selectedProject !== "all" &&
+          selectedProject !== ""
+        ) {
+          const taskProjectName =
+            typeof task.project === "string"
+              ? task.project
+              : task.project?.value;
+          console.log("🔍 Project filter check:", {
+            taskId: task.id,
+            taskProjectName,
+            selectedProject,
+            match: taskProjectName === selectedProject,
+          });
           if (taskProjectName !== selectedProject) {
             return false;
           }
         }
 
-
-
         // Date range filter is now handled at API level, so we don't need frontend filtering
         // The API already returns tasks filtered by the selected date range
 
-        return true
-      })
-    }
+        return true;
+      });
+    };
 
     // Apply filters first
     const filteredApiTasks = filterTasks(apiTasks);
+    console.log("🔍 Filter results:", {
+      originalCount: apiTasks.length,
+      filteredCount: filteredApiTasks.length,
+      selectedProject,
+      searchQuery,
+    });
 
-    if (viewMode === 'status') {
+    if (viewMode === "status") {
       // Dynamic status grouping based on API statuses
       const statusGrouped: Record<string, Task[]> = {};
 
       // Initialize groups for each status
-      statusColumns.forEach(column => {
+      statusColumns.forEach((column) => {
         statusGrouped[column.id] = [];
       });
 
       // Group tasks by status
-      filteredApiTasks.forEach(task => {
-        const statusValue = ((task.status as any)?.value || task.status)?.toLowerCase().trim();
+      filteredApiTasks.forEach((task) => {
+        const statusValue = ((task.status as any)?.value || task.status)
+          ?.toLowerCase()
+          .trim();
 
         // Find matching status column
-        const matchingColumn = statusColumns.find(column => {
+        const matchingColumn = statusColumns.find((column) => {
           const columnTitle = column.title.toLowerCase().trim();
-          return statusValue?.includes(columnTitle) ||
-                 statusValue === column.id ||
-                 columnTitle.includes(statusValue || '');
+          return (
+            statusValue?.includes(columnTitle) ||
+            statusValue === column.id ||
+            columnTitle.includes(statusValue || "")
+          );
         });
 
         if (matchingColumn) {
@@ -634,9 +793,13 @@ export default function BoardPage() {
         }
       });
 
-      console.log('🔍 Dynamic status grouped results:',
+      console.log(
+        "🔍 Dynamic status grouped results:",
         Object.fromEntries(
-          Object.entries(statusGrouped).map(([key, tasks]) => [key, tasks.length])
+          Object.entries(statusGrouped).map(([key, tasks]) => [
+            key,
+            tasks.length,
+          ])
         )
       );
 
@@ -646,21 +809,42 @@ export default function BoardPage() {
       const stageGrouped: Record<string, Task[]> = {};
 
       // Initialize groups for each stage
-      stageColumns.forEach(column => {
+      stageColumns.forEach((column) => {
         stageGrouped[column.id] = [];
       });
 
       // Group tasks by stage
-      filteredApiTasks.forEach(task => {
-        const stageValue = ((task.stage as any)?.value || task.stage)?.toLowerCase().trim();
+      filteredApiTasks.forEach((task) => {
+        const stageValue = ((task.stage as any)?.value || task.stage)
+          ?.toLowerCase()
+          .trim();
+
+        console.log("🔍 Processing task stage:", {
+          taskId: task.id,
+          taskTitle: task.title,
+          stageValue,
+          availableColumns: stageColumns.map((c) => ({
+            id: c.id,
+            title: c.title,
+          })),
+        });
 
         // Find matching stage column
-        const matchingColumn = stageColumns.find(column => {
+        const matchingColumn = stageColumns.find((column) => {
           const columnTitle = column.title.toLowerCase().trim();
-          return stageValue?.includes(columnTitle) ||
-                 stageValue === column.id ||
-                 columnTitle.includes(stageValue || '');
+          return (
+            stageValue?.includes(columnTitle) ||
+            stageValue === column.id ||
+            columnTitle.includes(stageValue || "")
+          );
         });
+
+        console.log(
+          "🔍 Found matching column:",
+          matchingColumn?.id,
+          "for stage:",
+          stageValue
+        );
 
         if (matchingColumn) {
           stageGrouped[matchingColumn.id].push(task);
@@ -672,104 +856,143 @@ export default function BoardPage() {
         }
       });
 
-      console.log('🔍 Dynamic stage grouped results:',
+      console.log(
+        "🔍 Dynamic stage grouped results:",
         Object.fromEntries(
-          Object.entries(stageGrouped).map(([key, tasks]) => [key, tasks.length])
+          Object.entries(stageGrouped).map(([key, tasks]) => [
+            key,
+            tasks.length,
+          ])
         )
       );
 
       return stageGrouped;
     }
-  }, [apiTasks, viewMode, searchQuery, selectedProject, dateRange, stages, statuses, projectStages])
+  }, [
+    apiTasks,
+    viewMode,
+    searchQuery,
+    selectedProject,
+    dateRange,
+    stages,
+    statuses,
+    projectStages,
+  ]);
 
-  const columns = viewMode === 'status' ? statusColumns : stageColumns
+  const columns = viewMode === "status" ? statusColumns : stageColumns;
+
+  console.log("🔍 DndContext setup:", {
+    tasksCount: tasks.length,
+    columnsCount: columns.length,
+    viewMode,
+    sensors: sensors.length,
+  });
 
   // Drag handlers
   const handleDragStart = (event: DragStartEvent) => {
-    const task = tasks.find(t => t.id === event.active.id)
-    setDraggedTask(task || null)
-  }
+    const task = tasks.find((t) => t.id === event.active.id);
+    console.log("🔄 Drag started:", { taskId: event.active.id, task });
+    setDraggedTask(task || null);
+  };
 
   const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event
-    setDraggedTask(null)
+    const { active, over } = event;
+    console.log("🔄 Drag ended:", { activeId: active.id, overId: over?.id });
+    setDraggedTask(null);
 
-    if (!over) return
+    if (!over) {
+      console.log("❌ No drop target");
+      return;
+    }
 
-    const taskId = active.id as number
-    const task = tasks.find(t => t.id === taskId)
+    const taskId = active.id as number;
+    const task = tasks.find((t) => t.id === taskId);
+    console.log("🔄 Found task:", task);
 
-    if (!task) return
+    if (!task) {
+      console.log("❌ Task not found for ID:", taskId);
+      return;
+    }
+
+    // Set updating state for visual feedback
+    setUpdatingTaskId(taskId);
 
     // Determine the target column
-    let newColumn: string
+    let newColumn: string;
 
     // Check if we're dropping on a column or on a task
-    const overId = over.id as string | number
+    const overId = over.id as string | number;
 
     // If overId is a number, it's a task ID - find which column that task belongs to
-    if (typeof overId === 'number') {
-      const targetTask = tasks.find(t => t.id === overId)
+    if (typeof overId === "number") {
+      const targetTask = tasks.find((t) => t.id === overId);
       if (targetTask) {
-        newColumn = viewMode === 'status'
-          ? getStatusValue(targetTask.status)
-          : getStageValue(targetTask.stage)
+        newColumn =
+          viewMode === "status"
+            ? getStatusValue(targetTask.status)
+            : getStageValue(targetTask.stage);
       } else {
-        return // Invalid drop target
+        return; // Invalid drop target
       }
     } else {
       // It's a column ID
-      newColumn = overId
+      newColumn = overId;
     }
 
     // Check if task is already in the target column
-    const currentValue = viewMode === 'status'
-      ? getStatusValue(task.status)
-      : getStageValue(task.stage)
-    if (currentValue === newColumn) return
+    const currentValue =
+      viewMode === "status"
+        ? getStatusValue(task.status)
+        : getStageValue(task.stage);
+    if (currentValue === newColumn) return;
 
     // Validate that the new column is valid
-    const validColumns = viewMode === 'status'
-      ? ['pending', 'ongoing', 'completed']
-      : ['design', 'html', 'development', 'qa']
+    const validColumns =
+      viewMode === "status"
+        ? ["pending", "ongoing", "completed"]
+        : ["design", "html", "development", "qa"];
 
     if (!validColumns.includes(newColumn)) {
-      return
+      return;
     }
 
     // Update task using our API integration
     try {
-      const updateData = { [viewMode]: newColumn }
-      const success = await updateApiTask(taskId.toString(), updateData)
+      const updateData = { [viewMode]: newColumn };
+      console.log("🔄 Update data:", updateData, "for task:", taskId);
+      const success = await updateApiTask(taskId.toString(), updateData);
 
       if (!success) {
-        console.error('Failed to update task')
+        console.error("Failed to update task");
+      } else {
+        console.log("✅ Task updated successfully");
       }
     } catch (error) {
-      console.error('Error updating task:', error)
+      console.error("Error updating task:", error);
+    } finally {
+      // Clear updating state regardless of success/failure
+      setUpdatingTaskId(null);
     }
-  }
+  };
 
-  console.log('🔍 BoardPage - Render check:', {
+  console.log("🔍 BoardPage - Render check:", {
     sessionStatus: status,
     loading: loading,
     apiLoading: apiLoading,
-    shouldShowLoading: status === 'loading'
+    shouldShowLoading: status === "loading",
   });
 
   // Only show full-screen loading for session loading
   // Removed employee loading to reduce blinking when switching pages
-  if (status === 'loading') {
-    console.log('🔍 BoardPage - Showing loading state');
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600"></div>
-      </div>
-    )
+  if (status === "loading") {
+    console.log(
+      "🔍 BoardPage - Showing loading state, but continuing to load tasks..."
+    );
+    // Don't return early - let the component continue to render and load tasks
   }
 
-  if (status === 'unauthenticated') {
-    return null
+  if (status === "unauthenticated") {
+    return null;
   }
 
   // Show API status if there's an issue (but continue with demo data)
@@ -985,6 +1208,9 @@ export default function BoardPage() {
               collisionDetection={rectIntersection}
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
+              onDragOver={(event) => {
+                console.log("🔄 Drag over:", event);
+              }}
             >
               <div className="flex space-x-6 overflow-x-auto h-full pb-6">
                 {columns.map((column) => (
@@ -997,6 +1223,7 @@ export default function BoardPage() {
                     onTaskClick={handleTaskClick}
                     onTaskCreated={fetchTasks} // Refresh tasks after creation
                     viewMode={viewMode}
+                    updatingTaskId={updatingTaskId}
                   />
                 ))}
               </div>

@@ -18,6 +18,7 @@ interface TaskColumnProps {
   onAddTask?: () => void;
   onTaskCreated?: () => void; // Callback to refresh task list after creation
   viewMode?: "status" | "stage";
+  updatingTaskId?: number | null; // ID of task currently being updated via drag & drop
 }
 
 export default function TaskColumn({
@@ -29,6 +30,7 @@ export default function TaskColumn({
   onAddTask,
   onTaskCreated,
   viewMode = "status",
+  updatingTaskId,
 }: TaskColumnProps) {
   const { data: session } = useSession();
   const userEmail = session?.user?.email;
@@ -120,7 +122,7 @@ export default function TaskColumn({
       development: "3", // High
       qa: "3", // High
       discovery: "1", // Low
-      pending: "1", // Low
+      pending: "2", // Medium for status-based
       ongoing: "2", // Medium
       completed: "1", // Low
     };
@@ -143,12 +145,21 @@ export default function TaskColumn({
       completed: "8",
     };
 
+    // For status-based creation, use specific defaults as requested
+    const isStatusColumn = viewMode === "status";
+
     return {
       title: defaultTitleMap[columnId] || `New ${columnTitle} Task`,
-      description: `Task created for ${columnTitle} column`,
+      description: isStatusColumn
+        ? "none"
+        : `Task created for ${columnTitle} column`,
       priority: defaultPriorityMap[columnId] || "2",
       estimated_hours: defaultEstimatedHours[columnId] || "8",
       progress: 0, // Always start with 0% for quick creation
+      // For status-based creation, always default to stage 49 (Development)
+      defaultStage: isStatusColumn ? "49" : undefined,
+      // Always use task_type 1 (Project) as requested
+      task_type: "1",
     };
   };
 
@@ -184,22 +195,43 @@ export default function TaskColumn({
           };
           return stageIdMap[columnId] || 47;
         }
-        // Default stage for status-based view
-        return 49; // Default to Development
+        // For status-based view, always use stage 49 (Development)
+        return 49;
+      };
+
+      // Map status column ID to status value
+      const getStatusId = (columnId: string, viewMode: string): number => {
+        if (viewMode === "status") {
+          const statusIdMap: { [key: string]: number } = {
+            "1": 1, // Pending
+            "2": 2, // On-going
+            "3": 3, // Completed
+            // String-based fallbacks
+            pending: 1,
+            ongoing: 2,
+            "on-going": 2,
+            completed: 3,
+          };
+          return statusIdMap[columnId] || 1; // Default to Pending
+        }
+        return 1; // Default status for stage-based view
       };
 
       const stageId = getStageId(id, viewMode);
+      const statusId = getStatusId(id, viewMode);
 
-      // Prepare data in the exact format the API expects
+      // Prepare data in the exact format the API expects for status-based creation
       const apiData = {
         task_type: 1,
         project: parseInt(defaultProject),
-        stage: stageId,
+        stage: viewMode === "status" ? 49 : stageId, // Always 49 for status-based
         title: taskTitle,
-        estimated_hours: parseInt(defaultValues.estimated_hours),
-        priority: parseInt(defaultValues.priority),
-        status: 1, // Always set to intermediate status (1 = pending, 2 = ongoing, 3 = completed)
-        description: defaultValues.description || "none",
+        estimated_hours:
+          viewMode === "status" ? 8 : parseInt(defaultValues.estimated_hours), // Always 8 for status-based
+        priority: viewMode === "status" ? 2 : parseInt(defaultValues.priority), // Always 2 for status-based
+        status: statusId,
+        description:
+          viewMode === "status" ? "none" : defaultValues.description || "none", // Always "none" for status-based
         email: userEmail,
       };
 
@@ -340,6 +372,7 @@ export default function TaskColumn({
                 employees={employees}
                 onClick={() => onTaskClick?.(task)}
                 viewMode={viewMode}
+                isUpdating={updatingTaskId === task.id}
               />
             ))}
           </SortableContext>
