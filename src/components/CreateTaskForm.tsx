@@ -14,6 +14,13 @@ interface CreateTaskFormProps {
   initialStatus?: string;
   initialStage?: string;
   onTaskCreated?: () => void; // Callback to refresh parent component's task list
+  defaultValues?: {
+    title?: string;
+    description?: string;
+    progress?: number;
+    priority?: string;
+    estimated_hours?: string;
+  };
 }
 
 export default function CreateTaskForm({
@@ -21,6 +28,7 @@ export default function CreateTaskForm({
   initialStatus,
   initialStage,
   onTaskCreated,
+  defaultValues,
 }: CreateTaskFormProps) {
   const { data: session } = useSession();
   const userEmail = session?.user?.email;
@@ -276,16 +284,17 @@ export default function CreateTaskForm({
       : fallbackTeamMembers;
 
   const [formData, setFormData] = useState({
-    title: "",
-    description: "",
+    title: defaultValues?.title || "",
+    description: defaultValues?.description || "",
     project: "",
     status: initialStatus || "",
     stage: initialStage || "",
-    priority: "",
+    priority: defaultValues?.priority || "",
     assigned_to: [] as string[],
     due_date: "",
     task_type: "1", // Default task type
-    estimated_hours: "8", // Default 8 hours
+    estimated_hours: defaultValues?.estimated_hours || "8", // Default 8 hours
+    progress: defaultValues?.progress?.toString() || "0", // Default progress
   });
 
   const [formErrors, setFormErrors] = useState({
@@ -380,6 +389,7 @@ export default function CreateTaskForm({
         assigned_to: formData.assigned_to.map((id) => parseInt(id.toString())),
         task_type: parseInt(formData.task_type),
         estimated_hours: parseInt(formData.estimated_hours),
+        progress: parseInt(formData.progress) || 0,
       };
 
       // Only include optional fields if they have values
@@ -596,6 +606,23 @@ export default function CreateTaskForm({
                 max="100"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black"
                 placeholder="Enter estimated hours"
+              />
+            </div>
+
+            {/* Progress */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Progress (%)
+              </label>
+              <input
+                type="number"
+                name="progress"
+                value={formData.progress}
+                onChange={handleChange}
+                min="0"
+                max="100"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black"
+                placeholder="Enter progress percentage"
               />
             </div>
 

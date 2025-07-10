@@ -9,6 +9,13 @@ interface CreateTaskModalProps {
   initialStatus?: string;
   initialStage?: string;
   onTaskCreated?: () => void; // Callback to refresh parent component's task list
+  defaultValues?: {
+    title?: string;
+    description?: string;
+    progress?: number;
+    priority?: string;
+    estimated_hours?: string;
+  };
 }
 
 export default function CreateTaskModal({
@@ -17,6 +24,7 @@ export default function CreateTaskModal({
   initialStatus,
   initialStage,
   onTaskCreated,
+  defaultValues,
 }: CreateTaskModalProps) {
   if (!isOpen) return null;
 
@@ -32,6 +40,7 @@ export default function CreateTaskModal({
           initialStatus={initialStatus}
           initialStage={initialStage}
           onTaskCreated={onTaskCreated}
+          defaultValues={defaultValues}
         />
       </div>
     </div>
