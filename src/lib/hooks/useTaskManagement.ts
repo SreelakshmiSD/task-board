@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { taskManagementServices, Task, Project, ApiResponse } from '../services/taskManagementServices';
+import { taskManagementServices, Task, Project, ApiResponse, ApiStage, ApiStatus } from '../services/taskManagementServices';
 
 // Demo data for when API is not available
 const demoTasks: Task[] = [
@@ -108,16 +108,19 @@ interface UseTaskManagementReturn {
   // Data
   tasks: Task[];
   projects: Project[];
-  
+  stages: ApiStage[];
+
   // Loading states
   loading: boolean;
   tasksLoading: boolean;
   projectsLoading: boolean;
-  
+  stagesLoading: boolean;
+
   // Error states
   error: string | null;
   tasksError: string | null;
   projectsError: string | null;
+  stagesError: string | null;
   
   // Grouped data
   groupedByStatus: {
@@ -163,18 +166,21 @@ export const useTaskManagement = (options: UseTaskManagementOptions = {}): UseTa
   // State
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  
+  const [stages, setStages] = useState<ApiStage[]>([]);
+
   // Loading states
   const [tasksLoading, setTasksLoading] = useState(false);
   const [projectsLoading, setProjectsLoading] = useState(false);
-  
+  const [stagesLoading, setStagesLoading] = useState(false);
+
   // Error states
   const [tasksError, setTasksError] = useState<string | null>(null);
   const [projectsError, setProjectsError] = useState<string | null>(null);
-  
+  const [stagesError, setStagesError] = useState<string | null>(null);
+
   // Computed states
-  const loading = tasksLoading || projectsLoading;
-  const error = tasksError || projectsError;
+  const loading = tasksLoading || projectsLoading || stagesLoading;
+  const error = tasksError || projectsError || stagesError;
   
   // Get user ID
   const getUserId = useCallback(() => {
@@ -237,12 +243,40 @@ export const useTaskManagement = (options: UseTaskManagementOptions = {}): UseTa
       setProjectsLoading(false);
     }
   }, [providedEmail, dateRange]);
-  
+
+  // Fetch stages
+  const fetchStages = useCallback(async () => {
+    setStagesLoading(true);
+    setStagesError(null);
+
+    try {
+      const response = await taskManagementServices.getStagesList();
+
+      if (response.status === 'success') {
+        setStages(response.records);
+      } else {
+        setStagesError(response.message);
+        setStages(response.records); // Use fallback data
+      }
+    } catch (error) {
+      setStagesError('Failed to fetch stages');
+      // Set fallback stages
+      setStages([
+        { id: 47, title: 'Design' },
+        { id: 48, title: 'HTML' },
+        { id: 49, title: 'Development' },
+        { id: 51, title: 'QA' }
+      ]);
+    } finally {
+      setStagesLoading(false);
+    }
+  }, []);
+
   // Refetch all data
   const refetch = useCallback(async () => {
     console.log('🔄 refetch called with email:', providedEmail, 'dateRange:', dateRange);
-    await Promise.all([fetchTasks(), fetchProjects()]);
-  }, [fetchTasks, fetchProjects, providedEmail, dateRange]);
+    await Promise.all([fetchTasks(), fetchProjects(), fetchStages()]);
+  }, [fetchTasks, fetchProjects, fetchStages, providedEmail, dateRange]);
   
   // Create task
   const createTask = useCallback(async (taskData: Omit<Task, 'id' | 'created_at' | 'updated_at'>): Promise<boolean> => {
@@ -315,10 +349,10 @@ export const useTaskManagement = (options: UseTaskManagementOptions = {}): UseTa
   
   const searchTasks = useCallback((query: string): Task[] => {
     const lowercaseQuery = query.toLowerCase();
-    return tasks.filter(task => 
-      task.title.toLowerCase().includes(lowercaseQuery) ||
-      task.description.toLowerCase().includes(lowercaseQuery) ||
-      task.tags.some(tag => tag.toLowerCase().includes(lowercaseQuery))
+    return tasks.filter(task =>
+      task.title?.toLowerCase().includes(lowercaseQuery) ||
+      task.description?.toLowerCase().includes(lowercaseQuery) ||
+      (task.tags && Array.isArray(task.tags) && task.tags.some(tag => tag?.toLowerCase().includes(lowercaseQuery)))
     );
   }, [tasks]);
   
@@ -376,34 +410,37 @@ export const useTaskManagement = (options: UseTaskManagementOptions = {}): UseTa
     // Data
     tasks,
     projects,
-    
+    stages,
+
     // Loading states
     loading,
     tasksLoading,
     projectsLoading,
-    
+    stagesLoading,
+
     // Error states
     error,
     tasksError,
     projectsError,
-    
+    stagesError,
+
     // Grouped data
     groupedByStatus,
     groupedByStage,
-    
+
     // Statistics
     statistics,
-    
+
     // Actions
     refetch,
     refetchTasks: fetchTasks,
     refetchProjects: fetchProjects,
-    
+
     // Task operations
     createTask,
     updateTask,
     deleteTask,
-    
+
     // Utility functions
     filterByProject,
     searchTasks,

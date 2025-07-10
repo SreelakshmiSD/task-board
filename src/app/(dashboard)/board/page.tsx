@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import {
@@ -17,7 +17,9 @@ import {
 import { arrayMove } from '@dnd-kit/sortable'
 import { Employee, taskAPI, employeeAPI, mockData } from '@/utils/api'
 import { useTaskManagement } from '@/lib/hooks/useTaskManagement'
-import { Task } from '@/lib/services/taskManagementServices'
+import { useStages } from '@/lib/hooks/useStages'
+import { useStatuses } from '@/lib/hooks/useStatuses'
+import { Task, ApiStage, taskManagementServices } from '@/lib/services/taskManagementServices'
 import { authUtils } from '@/lib/utils/api-config'
 import TaskColumn from '@/components/TaskColumn'
 import Filters from '@/components/Filters'
@@ -56,6 +58,9 @@ export default function BoardPage() {
   const [apiError, setApiError] = useState<string | null>(null)
   const [projects, setProjects] = useState<any[]>([])
 
+  // Fetch stages and statuses dynamically (will be updated with project filtering later)
+  const { stages, loading: stagesLoading, error: stagesError } = useStages()
+  const { statuses, loading: statusesLoading, error: statusesError } = useStatuses()
 
   // Task overview state
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
@@ -229,6 +234,45 @@ export default function BoardPage() {
     }
   }
 
+  // Fetch project-specific stages
+  const fetchProjectStages = useCallback(async (projectName: string) => {
+    console.log('🔍 fetchProjectStages called with:', { projectName, projectsCount: projects.length });
+
+    if (!projectName || projectName === '' || projectName === 'all') {
+      // Use default stages from useStages hook
+      console.log('🔍 Using default stages, clearing project stages');
+      setProjectStages([]);
+      return;
+    }
+
+    setProjectStagesLoading(true);
+    try {
+      // Find project ID from project name
+      const selectedProjectData = projects.find(p => p.name === projectName);
+      if (!selectedProjectData) {
+        console.log('❌ Project not found:', projectName);
+        setProjectStages(stages); // Fallback to default stages
+        return;
+      }
+
+      console.log('🔄 Fetching stages for project:', projectName, 'ID:', selectedProjectData.id);
+      const response = await taskManagementServices.getStagesList(selectedProjectData.id);
+
+      if (response.status === 'success') {
+        console.log('✅ Project-specific stages fetched:', response.records.length);
+        setProjectStages(response.records);
+      } else {
+        console.log('❌ Failed to fetch project stages:', response.message);
+        setProjectStages(stages); // Fallback to default stages
+      }
+    } catch (error) {
+      console.error('❌ Error fetching project stages:', error);
+      setProjectStages(stages); // Fallback to default stages
+    } finally {
+      setProjectStagesLoading(false);
+    }
+  }, [projects, stages]);
+
   // Refetch function
   const refetch = () => {
     fetchTasks()
@@ -247,6 +291,10 @@ export default function BoardPage() {
 
   // Import functionality state
   const [importLoading, setImportLoading] = useState(false)
+
+  // Project-specific stages state
+  const [projectStages, setProjectStages] = useState<ApiStage[]>([])
+  const [projectStagesLoading, setProjectStagesLoading] = useState(false)
 
   // Helper function to get current quarter date range
   const getCurrentQuarterRange = () => {
@@ -443,9 +491,68 @@ export default function BoardPage() {
     }
   }, [selectedProject])
 
+  // Fetch project-specific stages when selected project or projects change
+  useEffect(() => {
+    console.log('🔍 Effect triggered:', {
+      projectsLength: projects.length,
+      stagesLength: stages.length,
+      selectedProject,
+      shouldFetch: projects.length > 0 && stages.length > 0
+    });
+
+    if (projects.length > 0 && stages.length > 0) {
+      console.log('🔄 Fetching project-specific stages for:', selectedProject);
+      fetchProjectStages(selectedProject);
+    }
+  }, [selectedProject, projects, stages, fetchProjectStages])
 
 
 
+
+
+  // Column configurations
+  const statusColumns = useMemo(() => {
+    if (statuses.length > 0) {
+      return statuses.map(status => ({
+        id: status.name.toLowerCase().replace(/\s+/g, '').replace('-', ''),
+        title: status.name
+      }));
+    }
+    // Fallback to default statuses if API hasn't loaded yet
+    return [
+      { id: 'pending', title: 'Pending' },
+      { id: 'ongoing', title: 'On-going' },
+      { id: 'completed', title: 'Completed' },
+    ];
+  }, [statuses])
+
+  const stageColumns = useMemo(() => {
+    // Use project-specific stages if available, otherwise fall back to default stages
+    const stagesToUse = projectStages.length > 0 ? projectStages : stages;
+
+    console.log('🔍 Stage columns calculation:', {
+      projectStagesCount: projectStages.length,
+      defaultStagesCount: stages.length,
+      stagesToUseCount: stagesToUse.length,
+      selectedProject,
+      projectStages: projectStages.map(s => s.title),
+      defaultStages: stages.map(s => s.title)
+    });
+
+    if (stagesToUse.length > 0) {
+      return stagesToUse.map(stage => ({
+        id: stage.title.toLowerCase().replace(/\s+/g, ''),
+        title: stage.title
+      }));
+    }
+    // Fallback to default stages if API hasn't loaded yet
+    return [
+      { id: 'design', title: 'Design' },
+      { id: 'html', title: 'HTML' },
+      { id: 'development', title: 'Development' },
+      { id: 'qa', title: 'QA' },
+    ];
+  }, [stages, projectStages, selectedProject])
 
   // Group tasks by status or stage using API data
   const groupedTasks = useMemo(() => {
@@ -497,82 +604,83 @@ export default function BoardPage() {
     const filteredApiTasks = filterTasks(apiTasks);
 
     if (viewMode === 'status') {
-      const statusGrouped = {
-        pending: filteredApiTasks.filter(task => {
-          const statusValue = typeof task.status === 'string' ? task.status : task.status?.value
-          return statusValue?.toLowerCase().includes('pending')
-        }),
-        ongoing: filteredApiTasks.filter(task => {
-          const statusValue = typeof task.status === 'string' ? task.status : task.status?.value
-          return statusValue?.toLowerCase().includes('ongoing') || statusValue?.toLowerCase().includes('on-going')
-        }),
-        completed: filteredApiTasks.filter(task => {
-          const statusValue = typeof task.status === 'string' ? task.status : task.status?.value
-          return statusValue?.toLowerCase().includes('completed') || statusValue?.toLowerCase().includes('complete')
-        })
-      }
-      return {
-        pending: statusGrouped.pending,
-        ongoing: statusGrouped.ongoing,
-        completed: statusGrouped.completed
-      }
-    } else {
-      const stageGrouped = {
-        design: filteredApiTasks.filter(task => {
-          const stageValue = typeof task.stage === 'string' ? task.stage : task.stage?.value
-          return stageValue?.toLowerCase().includes('design')
-        }),
-        html: filteredApiTasks.filter(task => {
-          const stageValue = ((task.stage as any)?.value || task.stage)?.toLowerCase().trim()
-          return stageValue?.includes('html')
-        }),
-        development: filteredApiTasks.filter(task => {
-          const stageValue = ((task.stage as any)?.value || task.stage)?.toLowerCase().trim()
-          return stageValue?.includes('development')
-        }),
-        qa: filteredApiTasks.filter(task => {
-          const stageValue = ((task.stage as any)?.value || task.stage)?.toLowerCase().trim()
-          return stageValue?.includes('qa')
-        })
-      }
+      // Dynamic status grouping based on API statuses
+      const statusGrouped: Record<string, Task[]> = {};
 
-      console.log('🔍 Stage grouped results:', {
-        design: stageGrouped.design.length,
-        html: stageGrouped.html.length,
-        development: stageGrouped.development.length,
-        qa: stageGrouped.qa.length
+      // Initialize groups for each status
+      statusColumns.forEach(column => {
+        statusGrouped[column.id] = [];
       });
 
-      // Debug QA tasks specifically
-      console.log('🔍 QA tasks:', stageGrouped.qa.map(task => ({
-        id: task.id,
-        title: task.title,
-        stage: task.stage,
-        stageValue: ((task.stage as any)?.value || task.stage)?.toLowerCase().trim()
-      })));
+      // Group tasks by status
+      filteredApiTasks.forEach(task => {
+        const statusValue = ((task.status as any)?.value || task.status)?.toLowerCase().trim();
 
-      return {
-        design: stageGrouped.design,
-        html: stageGrouped.html,
-        development: stageGrouped.development,
-        qa: stageGrouped.qa
-      }
+        // Find matching status column
+        const matchingColumn = statusColumns.find(column => {
+          const columnTitle = column.title.toLowerCase().trim();
+          return statusValue?.includes(columnTitle) ||
+                 statusValue === column.id ||
+                 columnTitle.includes(statusValue || '');
+        });
+
+        if (matchingColumn) {
+          statusGrouped[matchingColumn.id].push(task);
+        } else {
+          // If no match found, try to match with first status as fallback
+          if (statusColumns.length > 0) {
+            statusGrouped[statusColumns[0].id].push(task);
+          }
+        }
+      });
+
+      console.log('🔍 Dynamic status grouped results:',
+        Object.fromEntries(
+          Object.entries(statusGrouped).map(([key, tasks]) => [key, tasks.length])
+        )
+      );
+
+      return statusGrouped;
+    } else {
+      // Dynamic stage grouping based on API stages
+      const stageGrouped: Record<string, Task[]> = {};
+
+      // Initialize groups for each stage
+      stageColumns.forEach(column => {
+        stageGrouped[column.id] = [];
+      });
+
+      // Group tasks by stage
+      filteredApiTasks.forEach(task => {
+        const stageValue = ((task.stage as any)?.value || task.stage)?.toLowerCase().trim();
+
+        // Find matching stage column
+        const matchingColumn = stageColumns.find(column => {
+          const columnTitle = column.title.toLowerCase().trim();
+          return stageValue?.includes(columnTitle) ||
+                 stageValue === column.id ||
+                 columnTitle.includes(stageValue || '');
+        });
+
+        if (matchingColumn) {
+          stageGrouped[matchingColumn.id].push(task);
+        } else {
+          // If no match found, try to match with first stage as fallback
+          if (stageColumns.length > 0) {
+            stageGrouped[stageColumns[0].id].push(task);
+          }
+        }
+      });
+
+      console.log('🔍 Dynamic stage grouped results:',
+        Object.fromEntries(
+          Object.entries(stageGrouped).map(([key, tasks]) => [key, tasks.length])
+        )
+      );
+
+      return stageGrouped;
     }
-  }, [apiTasks, viewMode, searchQuery, selectedProject, dateRange])
-
-  // Column configurations
-  const statusColumns = [
-    { id: 'pending', title: 'Pending' },
-    { id: 'ongoing', title: 'On-going' },
-    { id: 'completed', title: 'Completed' },
-  ]
-
-  const stageColumns = [
-    { id: 'design', title: 'Design' },
-    { id: 'html', title: 'HTML' },
-    { id: 'development', title: 'Development' },
-    { id: 'qa', title: 'QA' },
-  ]
+  }, [apiTasks, viewMode, searchQuery, selectedProject, dateRange, stages, statuses, projectStages])
 
   const columns = viewMode === 'status' ? statusColumns : stageColumns
 

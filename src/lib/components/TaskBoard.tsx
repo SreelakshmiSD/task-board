@@ -2,25 +2,30 @@
 
 import React, { useState } from 'react';
 import { useTaskManagement } from '../hooks/useTaskManagement';
+import { useStages } from '../hooks/useStages';
+import { useStatuses } from '../hooks/useStatuses';
 import { Task } from '../services/taskManagementServices';
 
 interface TaskBoardProps {
   userId?: string;
   viewMode?: 'status' | 'stage';
   showProjects?: boolean;
+  selectedProject?: string;
+  projects?: Array<{ id: string; name: string; }>;
+  onProjectChange?: (project: string) => void;
 }
 
-export const TaskBoard: React.FC<TaskBoardProps> = ({ 
-  userId, 
+export const TaskBoard: React.FC<TaskBoardProps> = ({
+  userId,
   viewMode = 'status',
-  showProjects = true 
+  showProjects = true,
+  selectedProject = '',
+  projects = [],
+  onProjectChange
 }) => {
-  const [selectedProject, setSelectedProject] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  
+
   const {
-    tasks,
-    projects,
     loading,
     error,
     groupedByStatus,
@@ -29,15 +34,74 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
     refetch,
     updateTask,
     deleteTask,
-    filterByProject,
     searchTasks
   } = useTaskManagement({ autoFetch: true, userId });
 
+  // Get selected project ID for stages filtering
+  const selectedProjectId = selectedProject && selectedProject !== '' && selectedProject !== 'all'
+    ? projects.find(p => p.name === selectedProject)?.id
+    : undefined;
+
+  // Fetch stages and statuses dynamically
+  const stagesData = useStages({ projectId: selectedProjectId });
+  const statusesData = useStatuses();
+  const stages = stagesData.stages || [];
+  const statuses = statusesData.statuses || [];
+
   // Get current groups based on view mode
   const currentGroups = viewMode === 'status' ? groupedByStatus : groupedByStage;
-  const groupKeys = viewMode === 'status' 
-    ? ['pending', 'ongoing', 'completed']
-    : ['design', 'html', 'development', 'qa'];
+  const groupKeys = viewMode === 'status'
+    ? statuses && statuses.length > 0
+      ? statuses.map((status: any) => status.name.toLowerCase().replace(/\s+/g, '').replace('-', ''))
+      : ['pending', 'ongoing', 'completed']
+    : stages && stages.length > 0
+      ? stages.map((stage: any) => stage.title.toLowerCase().replace(/\s+/g, ''))
+      : ['design', 'html', 'development', 'qa'];
+
+  // Type-safe function to get tasks from groups
+  const getGroupTasks = (groupKey: string): Task[] => {
+    if (viewMode === 'status') {
+      const statusGroups = currentGroups as { [key: string]: Task[] };
+      return statusGroups[groupKey] || [];
+    } else {
+      const stageGroups = currentGroups as { [key: string]: Task[] };
+      return stageGroups[groupKey] || [];
+    }
+  };
+
+  // Generate options for dropdowns
+  const getStatusOptions = () => {
+    if (statuses && statuses.length > 0) {
+      return statuses.map((status: any) => ({
+        value: status.name.toLowerCase().replace(/\s+/g, '').replace('-', ''),
+        label: status.name
+      }));
+    }
+    // Fallback to default statuses if API hasn't loaded yet
+    return [
+      { value: 'pending', label: 'Pending' },
+      { value: 'ongoing', label: 'On-going' },
+      { value: 'completed', label: 'Completed' }
+    ];
+  };
+
+  const getStageOptions = () => {
+    if (stages && stages.length > 0) {
+      return stages.map((stage: any) => ({
+        value: stage.title.toLowerCase().replace(/\s+/g, ''),
+        label: stage.title
+      }));
+    }
+    // Fallback to default stages if API hasn't loaded yet
+    return [
+      { value: 'design', label: 'Design' },
+      { value: 'html', label: 'HTML' },
+      { value: 'development', label: 'Development' },
+      { value: 'qa', label: 'QA' }
+    ];
+  };
+
+  const options = viewMode === 'status' ? getStatusOptions() : getStageOptions();
 
   // Filter tasks based on selected project and search
   const getFilteredTasks = (groupTasks: Task[]) => {
@@ -131,7 +195,7 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
             <div className="min-w-48">
               <select
                 value={selectedProject}
-                onChange={(e) => setSelectedProject(e.target.value)}
+                onChange={(e) => onProjectChange?.(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Projects</option>
@@ -169,7 +233,7 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
       {/* Task Columns */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {groupKeys.map((groupKey) => {
-          const groupTasks = currentGroups[groupKey] || [];
+          const groupTasks = getGroupTasks(groupKey);
           const filteredTasks = getFilteredTasks(groupTasks);
           
           return (
@@ -193,6 +257,7 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
                     viewMode={viewMode}
                     onMove={handleTaskMove}
                     onDelete={handleDeleteTask}
+                    options={options}
                   />
                 ))}
                 
@@ -216,11 +281,13 @@ interface TaskCardProps {
   viewMode: 'status' | 'stage';
   onMove: (taskId: string, newValue: string) => void;
   onDelete: (taskId: string) => void;
+  options: Array<{ value: string; label: string }>;
 }
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, viewMode, onMove, onDelete }) => {
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
+const TaskCard: React.FC<TaskCardProps> = ({ task, viewMode, onMove, onDelete, options }) => {
+  const getPriorityColor = (priority: any) => {
+    const priorityValue = typeof priority === 'string' ? priority : priority?.value || 'medium';
+    switch (priorityValue.toLowerCase()) {
       case 'high': return 'bg-red-100 text-red-800 border-red-200';
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       case 'low': return 'bg-green-100 text-green-800 border-green-200';
@@ -228,21 +295,14 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, viewMode, onMove, onDelete })
     }
   };
 
-  const getStatusOptions = () => [
-    { value: 'pending', label: 'Pending' },
-    { value: 'ongoing', label: 'Ongoing' },
-    { value: 'completed', label: 'Completed' }
-  ];
+  const getPriorityDisplay = (priority: any) => {
+    return typeof priority === 'string' ? priority : priority?.value || 'medium';
+  };
 
-  const getStageOptions = () => [
-    { value: 'design', label: 'Design' },
-    { value: 'html', label: 'HTML' },
-    { value: 'development', label: 'Development' },
-    { value: 'qa', label: 'QA' }
-  ];
 
-  const options = viewMode === 'status' ? getStatusOptions() : getStageOptions();
-  const currentValue = viewMode === 'status' ? task.status : task.stage;
+  const currentValue = viewMode === 'status'
+    ? (typeof task.status === 'string' ? task.status : task.status?.value || 'pending')
+    : (typeof task.stage === 'string' ? task.stage : task.stage?.value || 'design');
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow">
@@ -252,7 +312,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, viewMode, onMove, onDelete })
           {task.title}
         </h4>
         <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getPriorityColor(task.priority)}`}>
-          {task.priority}
+          {getPriorityDisplay(task.priority)}
         </span>
       </div>
 
@@ -283,7 +343,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, viewMode, onMove, onDelete })
       )}
 
       {/* Progress Bar */}
-      {task.progress > 0 && (
+      {task.progress && task.progress > 0 && (
         <div className="mb-3">
           <div className="flex justify-between text-xs text-gray-600 mb-1">
             <span>Progress</span>
@@ -301,7 +361,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, viewMode, onMove, onDelete })
       {/* Project */}
       {task.project && (
         <p className="text-xs text-gray-500 mb-3">
-          Project: {task.project}
+          Project: {typeof task.project === 'string' ? task.project : task.project?.value || 'Unknown'}
         </p>
       )}
 
@@ -312,7 +372,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, viewMode, onMove, onDelete })
           onChange={(e) => onMove(task.id.toString(), e.target.value)}
           className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          {options.map((option) => (
+          {options.map((option: any) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
