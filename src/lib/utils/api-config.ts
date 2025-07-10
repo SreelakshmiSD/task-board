@@ -4,7 +4,7 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 export const API_CONFIG = {
   // Use local Next.js API routes as proxy to avoid CORS issues
   BASE_URL: process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000/api'
+    ? 'http://localhost:3005/api'
     : 'https://workflow-dev.e8demo.com',
   TIMEOUT: 30000, // Increased to 30 seconds
   RETRY_ATTEMPTS: 2, // Reduced retry attempts to fail faster
