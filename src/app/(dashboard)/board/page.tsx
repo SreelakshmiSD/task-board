@@ -87,6 +87,30 @@ export default function BoardPage() {
     setSelectedTask(null);
   };
 
+  // Color change handler
+  const handleColorChange = (taskId: number, color: string) => {
+    // Update the task color in local state
+    setApiTasks((prevTasks) =>
+      prevTasks.map((task) => (task.id === taskId ? { ...task, color } : task))
+    );
+
+    // Here you could also make an API call to persist the color change
+    // For now, we'll just update the local state
+  };
+
+  // Labels change handler
+  const handleLabelsChange = (taskId: number, labels: string[]) => {
+    // Update the task labels in local state
+    setApiTasks((prevTasks) =>
+      prevTasks.map((task) =>
+        task.id === taskId ? { ...task, tags: labels } : task
+      )
+    );
+
+    // Here you could also make an API call to persist the labels change
+    // For now, we'll just update the local state
+  };
+
   // Side menu handlers
   const handleMenuItemSelect = (item: "project" | "task") => {
     setSelectedMenuItem(item);
@@ -287,11 +311,25 @@ export default function BoardPage() {
     try {
       console.log("🔄 Updating task via API:", taskId, updateData);
 
+      // Find the task before update to compare
+      const taskBeforeUpdate = apiTasks.find((t) => String(t.id) === taskId);
+      console.log("📋 Task before update:", {
+        id: taskBeforeUpdate?.id,
+        title: taskBeforeUpdate?.title,
+        status: taskBeforeUpdate?.status,
+        stage: taskBeforeUpdate?.stage,
+      });
+
       const requestBody = {
         email: userEmail,
         task_id: taskId,
         ...updateData,
       };
+
+      console.log("🌐 About to make API call to /api/update-task-status");
+      console.log("📤 Request body:", JSON.stringify(requestBody, null, 2));
+      console.log("👤 User email:", userEmail);
+      console.log("🆔 Task ID:", taskId);
 
       const response = await fetch("/api/update-task-status", {
         method: "POST",
@@ -300,6 +338,8 @@ export default function BoardPage() {
         },
         body: JSON.stringify(requestBody),
       });
+
+      console.log("📡 Fetch completed, response status:", response.status);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -311,7 +351,24 @@ export default function BoardPage() {
       console.log("✅ Task updated successfully:", result);
 
       // Refresh tasks to get updated data
+      console.log("🔄 Refreshing task list after API update...");
+      console.log("📊 Tasks before refresh:", apiTasks.length);
+
+      // Add a small delay to ensure API has processed the update
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
       await fetchTasks();
+      console.log("✅ Task list refreshed");
+      console.log("📊 Tasks after refresh:", apiTasks.length);
+
+      // Check if the task was actually updated
+      const taskAfterUpdate = apiTasks.find((t) => String(t.id) === taskId);
+      console.log("📋 Task after update:", {
+        id: taskAfterUpdate?.id,
+        title: taskAfterUpdate?.title,
+        status: taskAfterUpdate?.status,
+        stage: taskAfterUpdate?.stage,
+      });
 
       return true;
     } catch (err) {
@@ -388,6 +445,12 @@ export default function BoardPage() {
   const [loading, setLoading] = useState(false); // Start with false to reduce initial loading
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProject, setSelectedProject] = useState("");
+  const [detailFilters, setDetailFilters] = useState({
+    priorities: [] as string[],
+    statuses: [] as string[],
+    assignees: [] as string[],
+    dateRange: { start: null as string | null, end: null as string | null },
+  });
 
   const [viewMode, setViewMode] = useState<"status" | "stage">("stage");
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -516,14 +579,17 @@ export default function BoardPage() {
   //   console.log('🔍 BoardPage - First task:', apiTasks[0]);
   // }
 
-  // Sensors for drag and drop
+  // Sensors for drag and drop - using multiple sensors for better compatibility
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8,
+        distance: 3, // Reduced distance for easier activation
       },
     })
   );
+
+  // Debug sensor setup
+  console.log("🔧 Sensors configured:", sensors.length);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -685,6 +751,41 @@ export default function BoardPage() {
     ];
   }, [stages, projectStages, selectedProject]);
 
+  // Extract unique values for filters
+  const availableFilters = useMemo(() => {
+    const priorities = Array.from(
+      new Set(
+        apiTasks
+          .map((task) =>
+            typeof task.priority === "string"
+              ? task.priority
+              : task.priority?.value
+          )
+          .filter(Boolean)
+      )
+    ).map((value, index) => ({ id: index + 1, value: value as string }));
+
+    const taskStatuses = Array.from(
+      new Set(
+        apiTasks
+          .map((task) =>
+            typeof task.status === "string" ? task.status : task.status?.value
+          )
+          .filter(Boolean)
+      )
+    ).map((value, index) => ({ id: index + 1, value: value as string }));
+
+    const assignees = Array.from(
+      new Map(
+        apiTasks
+          .flatMap((task) => task.assignees || [])
+          .map((assignee) => [assignee.id, assignee])
+      ).values()
+    );
+
+    return { priorities, statuses: taskStatuses, assignees };
+  }, [apiTasks]);
+
   // Group tasks by status or stage using API data
   const groupedTasks = useMemo(() => {
     console.log(
@@ -738,6 +839,41 @@ export default function BoardPage() {
             match: taskProjectName === selectedProject,
           });
           if (taskProjectName !== selectedProject) {
+            return false;
+          }
+        }
+
+        // Priority filter
+        if (detailFilters.priorities.length > 0) {
+          const taskPriority =
+            typeof task.priority === "string"
+              ? task.priority
+              : task.priority?.value;
+          if (
+            !taskPriority ||
+            !detailFilters.priorities.includes(taskPriority)
+          ) {
+            return false;
+          }
+        }
+
+        // Status filter (for detailed filters)
+        if (detailFilters.statuses.length > 0) {
+          const taskStatus =
+            typeof task.status === "string" ? task.status : task.status?.value;
+          if (!taskStatus || !detailFilters.statuses.includes(taskStatus)) {
+            return false;
+          }
+        }
+
+        // Assignee filter
+        if (detailFilters.assignees.length > 0) {
+          const taskAssigneeIds =
+            task.assignees?.map((a) => a.id.toString()) || [];
+          const hasMatchingAssignee = detailFilters.assignees.some(
+            (assigneeId) => taskAssigneeIds.includes(assigneeId)
+          );
+          if (!hasMatchingAssignee) {
             return false;
           }
         }
@@ -877,6 +1013,7 @@ export default function BoardPage() {
     stages,
     statuses,
     projectStages,
+    detailFilters,
   ]);
 
   const columns = viewMode === "status" ? statusColumns : stageColumns;
@@ -886,57 +1023,81 @@ export default function BoardPage() {
     columnsCount: columns.length,
     viewMode,
     sensors: sensors.length,
+    groupedTasksKeys: Object.keys(groupedTasks),
+    sampleTask:
+      tasks.length > 0 ? { id: tasks[0].id, title: tasks[0].title } : null,
   });
 
   // Drag handlers
   const handleDragStart = (event: DragStartEvent) => {
-    const task = tasks.find((t) => t.id === event.active.id);
-    console.log("🔄 Drag started:", { taskId: event.active.id, task });
+    console.log("🚀 DRAG STARTED! Task ID:", event.active.id);
+    // alert("🚀 Drag started! Check console for details.");
+
+    const task = tasks.find((t) => String(t.id) === String(event.active.id));
+    console.log("🔄 Found task for drag:", task);
     setDraggedTask(task || null);
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
-    console.log("🔄 Drag ended:", { activeId: active.id, overId: over?.id });
+    console.log("🎯 DRAG ENDED! Active:", active.id, "Over:", over?.id);
+    // alert("🎯 Drag ended! Check console for details.");
     setDraggedTask(null);
 
     if (!over) {
       console.log("❌ No drop target");
+      alert("❌ No drop target - drag was cancelled");
       return;
     }
 
-    const taskId = active.id as number;
-    const task = tasks.find((t) => t.id === taskId);
-    console.log("🔄 Found task:", task);
+    const taskId = String(active.id);
+    const task = tasks.find((t) => String(t.id) === taskId);
+    console.log("🔄 Found task for drag end:", task);
 
     if (!task) {
       console.log("❌ Task not found for ID:", taskId);
+      alert("❌ Task not found!");
       return;
     }
 
     // Set updating state for visual feedback
-    setUpdatingTaskId(taskId);
+    setUpdatingTaskId(Number(taskId));
 
     // Determine the target column
     let newColumn: string;
 
     // Check if we're dropping on a column or on a task
-    const overId = over.id as string | number;
+    const overId = String(over.id);
 
-    // If overId is a number, it's a task ID - find which column that task belongs to
-    if (typeof overId === "number") {
-      const targetTask = tasks.find((t) => t.id === overId);
+    console.log("🔍 Drop analysis:", {
+      overId,
+      overIdType: typeof over.id,
+      isNumeric: !isNaN(Number(overId)),
+      columns: columns.map((c) => c.id),
+    });
+
+    // Check if overId is a column ID first
+    const isColumnId = columns.some((col) => col.id === overId);
+
+    if (isColumnId) {
+      // It's a column ID
+      newColumn = overId;
+      console.log("✅ Dropped on column:", newColumn);
+    } else {
+      // It's likely a task ID - find which column that task belongs to
+      const targetTask = tasks.find((t) => String(t.id) === overId);
       if (targetTask) {
         newColumn =
           viewMode === "status"
             ? getStatusValue(targetTask.status)
             : getStageValue(targetTask.stage);
+        console.log("✅ Dropped on task, target column:", newColumn);
       } else {
-        return; // Invalid drop target
+        console.log("❌ Invalid drop target:", overId);
+        alert("❌ Invalid drop target");
+        setUpdatingTaskId(null);
+        return;
       }
-    } else {
-      // It's a column ID
-      newColumn = overId;
     }
 
     // Check if task is already in the target column
@@ -944,31 +1105,65 @@ export default function BoardPage() {
       viewMode === "status"
         ? getStatusValue(task.status)
         : getStageValue(task.stage);
-    if (currentValue === newColumn) return;
 
-    // Validate that the new column is valid
+    console.log("🔍 Column check:", {
+      currentValue,
+      newColumn,
+      isSameColumn: currentValue === newColumn,
+    });
+
+    if (currentValue === newColumn) {
+      console.log("⚠️ Task is already in target column, skipping API call");
+      alert("⚠️ Task is already in the target column!");
+      setUpdatingTaskId(null);
+      return;
+    }
+
+    // Validate that the new column is valid - using actual API values
     const validColumns =
       viewMode === "status"
-        ? ["pending", "ongoing", "completed"]
-        : ["design", "html", "development", "qa"];
+        ? ["Pending", "On-going", "Completed"] // Match actual status API values
+        : ["Design", "HTML", "Development", "QA"]; // Match actual stage API values
+
+    console.log("🔍 Column validation:", {
+      newColumn,
+      validColumns,
+      isValid: validColumns.includes(newColumn),
+    });
 
     if (!validColumns.includes(newColumn)) {
+      console.log("❌ Invalid column, skipping API call");
+      alert("❌ Invalid column: " + newColumn);
+      setUpdatingTaskId(null);
       return;
     }
 
     // Update task using our API integration
     try {
       const updateData = { [viewMode]: newColumn };
-      console.log("🔄 Update data:", updateData, "for task:", taskId);
-      const success = await updateApiTask(taskId.toString(), updateData);
+      console.log("🔄 Drag & Drop Update:", {
+        taskId,
+        taskTitle: task.title,
+        viewMode,
+        currentValue,
+        newColumn,
+        updateData,
+      });
+
+      console.log("🚀 Calling updateApiTask function...");
+      const success = await updateApiTask(taskId, updateData);
+      console.log("🏁 updateApiTask returned:", success);
 
       if (!success) {
-        console.error("Failed to update task");
+        console.error("❌ Failed to update task via drag & drop");
+        alert("❌ Failed to update task via drag & drop");
       } else {
-        console.log("✅ Task updated successfully");
+        console.log("✅ Task updated successfully via drag & drop");
+        alert("✅ SUCCESS");
       }
     } catch (error) {
-      console.error("Error updating task:", error);
+      console.error("❌ Error updating task via drag & drop:", error);
+      // You could add an error toast notification here
     } finally {
       // Clear updating state regardless of success/failure
       setUpdatingTaskId(null);
@@ -1155,6 +1350,11 @@ export default function BoardPage() {
           onViewModeChange={setViewMode}
           projects={projects}
           projectsLoaded={true} // Always true since we're using API data
+          detailFilters={detailFilters}
+          onDetailFiltersChange={setDetailFilters}
+          availableAssignees={availableFilters.assignees}
+          availablePriorities={availableFilters.priorities}
+          availableStatuses={availableFilters.statuses}
         />
       </div>
 
@@ -1209,7 +1409,15 @@ export default function BoardPage() {
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
               onDragOver={(event) => {
-                console.log("🔄 Drag over:", event);
+                console.log(
+                  "🔄 Drag over - Active:",
+                  event.active.id,
+                  "Over:",
+                  event.over?.id
+                );
+              }}
+              onDragMove={(event) => {
+                console.log("🔄 Drag move - Active:", event.active.id);
               }}
             >
               <div className="flex space-x-6 overflow-x-auto h-full pb-6">
@@ -1224,6 +1432,10 @@ export default function BoardPage() {
                     onTaskCreated={fetchTasks} // Refresh tasks after creation
                     viewMode={viewMode}
                     updatingTaskId={updatingTaskId}
+                    selectedProject={selectedProject}
+                    projects={projects}
+                    onColorChange={handleColorChange}
+                    onLabelsChange={handleLabelsChange}
                   />
                 ))}
               </div>

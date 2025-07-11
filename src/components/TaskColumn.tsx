@@ -19,6 +19,10 @@ interface TaskColumnProps {
   onTaskCreated?: () => void; // Callback to refresh task list after creation
   viewMode?: "status" | "stage";
   updatingTaskId?: number | null; // ID of task currently being updated via drag & drop
+  selectedProject?: string; // Currently selected project name
+  projects?: Array<{ id: number; name: string }>; // Available projects for ID lookup
+  onColorChange?: (taskId: number, color: string) => void;
+  onLabelsChange?: (taskId: number, labels: string[]) => void;
 }
 
 export default function TaskColumn({
@@ -31,6 +35,10 @@ export default function TaskColumn({
   onTaskCreated,
   viewMode = "status",
   updatingTaskId,
+  selectedProject,
+  projects = [],
+  onColorChange,
+  onLabelsChange,
 }: TaskColumnProps) {
   const { data: session } = useSession();
   const userEmail = session?.user?.email;
@@ -51,7 +59,20 @@ export default function TaskColumn({
 
   const { setNodeRef, isOver } = useDroppable({
     id,
+    data: {
+      type: "column",
+      columnId: id,
+      title: title,
+    },
   });
+
+  // Debug logging for column setup (only when drag over)
+  if (isOver) {
+    console.log("🎯 Column has drag over:", {
+      columnId: id,
+      columnTitle: title,
+    });
+  }
 
   // Handle add task click
   const handleAddTask = () => {
@@ -86,7 +107,9 @@ export default function TaskColumn({
       ongoing: "green",
       completed: "purple",
     };
-    return stageVariantMap[columnId] || "default";
+    const variant = stageVariantMap[columnId] || "default";
+    console.log("🎨 Card variant for column:", { columnId, variant, title });
+    return variant;
   };
 
   // Get default values for new tasks based on column
@@ -170,11 +193,33 @@ export default function TaskColumn({
       return;
     }
 
+    if (!selectedProject) {
+      console.error("No project selected");
+      return;
+    }
+
     try {
       const defaultValues = getDefaultValues(id, title);
 
-      // Get the first available project (you can modify this logic)
-      const defaultProject = "319"; // HR Portal E8 - you can make this dynamic
+      // Get the selected project ID from the project name
+      const selectedProjectData = projects.find(
+        (p) => p.name === selectedProject
+      );
+      if (!selectedProjectData) {
+        console.error(
+          "Selected project not found in projects list:",
+          selectedProject
+        );
+        return;
+      }
+
+      const projectId = selectedProjectData.id.toString();
+      console.log(
+        "🎯 Using selected project:",
+        selectedProject,
+        "ID:",
+        projectId
+      );
 
       // Map column ID to correct stage ID based on your API
       const getStageId = (columnId: string, viewMode: string): number => {
@@ -223,7 +268,7 @@ export default function TaskColumn({
       // Prepare data in the exact format the API expects for status-based creation
       const apiData = {
         task_type: 1,
-        project: parseInt(defaultProject),
+        project: parseInt(projectId),
         stage: viewMode === "status" ? 49 : stageId, // Always 49 for status-based
         title: taskTitle,
         estimated_hours:
@@ -231,11 +276,14 @@ export default function TaskColumn({
         priority: viewMode === "status" ? 2 : parseInt(defaultValues.priority), // Always 2 for status-based
         status: statusId,
         description:
-          viewMode === "status" ? "none" : defaultValues.description || "none", // Always "none" for status-based
+          viewMode === "status"
+            ? taskTitle
+            : defaultValues.description || taskTitle, // Use task title as description
         email: userEmail,
       };
 
       console.log("Creating quick task with API format:", apiData);
+      alert("Creating quick task with API format:" + JSON.stringify(apiData));
 
       // Call the API directly instead of using the service
       const response = await fetch("/api/create-task", {
@@ -362,7 +410,7 @@ export default function TaskColumn({
       {!isCollapsed && (
         <div className="flex-1 p-3 space-y-3 overflow-y-auto">
           <SortableContext
-            items={tasks.map((task) => task.id)}
+            items={tasks.map((task) => String(task.id))} // Ensure IDs are strings
             strategy={verticalListSortingStrategy}
           >
             {tasks.map((task) => (
@@ -373,12 +421,14 @@ export default function TaskColumn({
                 onClick={() => onTaskClick?.(task)}
                 viewMode={viewMode}
                 isUpdating={updatingTaskId === task.id}
+                onColorChange={onColorChange}
+                onLabelsChange={onLabelsChange}
               />
             ))}
           </SortableContext>
 
-          {/* Task Info Card - shown when there are tasks */}
-          {tasks.length > 0 && !showInlineCreator && (
+          {/* Task Info Card - show always for debugging */}
+          {!showInlineCreator && (
             <TaskInfoCard
               message={`Tasks from Daily Tasks are copied here on a daily basis.`}
               onAddCard={() => setShowInlineCreator(true)}

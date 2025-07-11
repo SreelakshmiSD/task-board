@@ -329,7 +329,13 @@ export default function CreateTaskForm({
     >
   ) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+
+    // If title is being changed, also update description to match
+    if (name === "title") {
+      setFormData((prev) => ({ ...prev, [name]: value, description: value }));
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    }
 
     // Clear error for this field if it exists
     if (formErrors[name as keyof typeof formErrors]) {
@@ -385,42 +391,54 @@ export default function CreateTaskForm({
     setSubmitError("");
 
     try {
-      // Detect if this is status-based creation
+      // Detect if this is status-based creation (status is provided but stage is not)
       const isStatusBasedCreation = !!initialStatus && !initialStage;
 
-      // Clean up the data before sending
+      console.log("🔍 Creation type detection:", {
+        initialStatus,
+        initialStage,
+        isStatusBasedCreation,
+        formDataStatus: formData.status,
+        formDataStage: formData.stage,
+      });
+
+      // Prepare task data according to the API requirements
       const taskData: any = {
         email: userEmail,
         title: formData.title.trim(),
-        description: isStatusBasedCreation
-          ? "none"
-          : formData.description.trim(),
+        // description: "none", // Always "none" as per requirements
+        description: formData.title.trim(), // Always "none" as per requirements
         project: parseInt(formData.project),
-        status: parseInt(formData.status),
-        stage: isStatusBasedCreation ? 49 : parseInt(formData.stage), // Always 49 for status-based
+        task_type: 1, // Always 1 as per requirements
+        estimated_hours: 8, // Always 8 as per requirements
+        priority: 2, // Always 2 as per requirements
         assigned_to: formData.assigned_to.map((id) => parseInt(id.toString())),
-        task_type: 1, // Always 1 (Project) as requested
-        estimated_hours: isStatusBasedCreation
-          ? 8
-          : parseInt(formData.estimated_hours), // Always 8 for status-based
-        progress: parseInt(formData.progress) || 0,
       };
 
-      // For status-based creation, always set priority to 2
       if (isStatusBasedCreation) {
-        taskData.priority = 2;
+        // Status-based creation: stage is always 49, status comes from selection
+        taskData.stage = 49;
+        taskData.status = parseInt(formData.status || initialStatus);
+        console.log(
+          "📋 Status-based creation - stage fixed to 49, status:",
+          taskData.status
+        );
       } else {
-        // Only include optional fields if they have values for stage-based creation
-        if (formData.priority && formData.priority.trim()) {
-          taskData.priority = parseInt(formData.priority);
-        }
+        // Stage-based creation: status is always 1, stage comes from selection
+        taskData.stage = parseInt(formData.stage || initialStage);
+        taskData.status = 1;
+        console.log(
+          "🎯 Stage-based creation - status fixed to 1, stage:",
+          taskData.stage
+        );
       }
 
+      // Add due date if provided
       if (formData.due_date && formData.due_date.trim()) {
         taskData.due_date = formData.due_date;
       }
 
-      console.log("Creating task with cleaned data:", taskData);
+      console.log("📤 Creating task with final data:", taskData);
       const result = await createTask(taskData);
 
       if (result) {
