@@ -2,8 +2,11 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Task, Employee } from '@/utils/api'
 import AvatarGroup from './AvatarGroup'
+import AssigneeDropdown from './AssigneeDropdown'
 import { Calendar, MoreHorizontal, X, Palette, Tag } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { ApiTaskAssignee } from '@/lib/services/taskManagementServices';
+import { useSession } from 'next-auth/react';
 
 interface TaskCardProps {
   task: Task;
@@ -13,6 +16,7 @@ interface TaskCardProps {
   isUpdating?: boolean;
   onColorChange?: (taskId: number, color: string) => void;
   onLabelsChange?: (taskId: number, labels: string[]) => void;
+  onAssigneesChange?: (taskId: number, assignees: ApiTaskAssignee[]) => void;
 }
 
 export default function TaskCard({
@@ -23,7 +27,9 @@ export default function TaskCard({
   isUpdating = false,
   onColorChange,
   onLabelsChange,
+  onAssigneesChange,
 }: TaskCardProps) {
+  const { data: session } = useSession();
   const [showDescriptionModal, setShowDescriptionModal] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -323,6 +329,28 @@ export default function TaskCard({
     onLabelsChange(task.id, newLabels);
   };
 
+  // Handle assignee change
+  const handleAssigneesChange = (newAssignees: ApiTaskAssignee[]) => {
+    if (!onAssigneesChange) return;
+
+    console.log("👥 Assignees change:", {
+      taskId: task.id,
+      currentAssignees: task.assignees,
+      newAssignees,
+    });
+
+    // Update parent state
+    onAssigneesChange(task.id, newAssignees);
+  };
+
+  // Get project ID from task
+  const getProjectId = () => {
+    if (typeof task.project === 'object' && task.project?.id) {
+      return task.project.id;
+    }
+    return undefined;
+  };
+
   // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -387,6 +415,7 @@ export default function TaskCard({
       ref={setNodeRef}
       {...attributes}
       {...listeners}
+      data-task-card="true"
       className={`
         ${getCardColorClasses(
           (task as any).color
@@ -683,14 +712,16 @@ export default function TaskCard({
         </div>
 
         {/* Assignees - right aligned */}
-        <div>
-          {assignedEmployees.length > 0 && (
-            <AvatarGroup
-              employees={assignedEmployees}
-              maxVisible={3}
-              size="sm"
-            />
-          )}
+        <div onClick={(e) => e.stopPropagation()}>
+          <AssigneeDropdown
+            currentAssignees={task.assignees || []}
+            taskId={task.id}
+            projectId={getProjectId()}
+            email={session?.user?.email}
+            onAssigneesChange={handleAssigneesChange}
+            disabled={isUpdating}
+            size="sm"
+          />
         </div>
       </div>
 

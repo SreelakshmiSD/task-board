@@ -59,11 +59,13 @@ export async function POST(request: NextRequest) {
         'html': 48,        // HTML
         'development': 49, // Development
         'qa': 51,          // QA
+        'discovery': 46,   // Discovery
         // Also handle proper casing
         'Design': 47,
         'HTML': 48,
         'Development': 49,
         'QA': 51,
+        'Discovery': 46,
       }
 
       const stageId = stageMap[stage];

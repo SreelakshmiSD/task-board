@@ -579,8 +579,8 @@ export const taskManagementServices = {
     };
   },
 
-  // Get team members list by email
-  getTeamMembersList: async (email?: string): Promise<ApiResponse<ApiTeamMember[]>> => {
+  // Get team members list by email and optional project ID
+  getTeamMembersList: async (email?: string, projectId?: string | number): Promise<ApiResponse<ApiTeamMember[]>> => {
     try {
       // Use provided email or get from authenticated session
       const userEmail = email || await getAuthenticatedUserEmail();
@@ -593,10 +593,17 @@ export const taskManagementServices = {
         };
       }
 
+      const params: any = {
+        email: userEmail
+      };
+
+      // Add project_id parameter if provided
+      if (projectId) {
+        params.project_id = projectId;
+      }
+
       const response = await axiosInstance.get('/team-members-list', {
-        params: {
-          email: userEmail
-        }
+        params
       });
 
       if (response.data.result === 'success' || response.data.status === 'success') {
@@ -620,6 +627,103 @@ export const taskManagementServices = {
         records: []
       };
     }
+  },
+
+  // Update task assignees
+  updateTaskAssignees: async (taskId: number, assigneeIds: number[], email?: string): Promise<ApiResponse<any>> => {
+    try {
+      // Use provided email or get from authenticated session
+      const userEmail = email || await getAuthenticatedUserEmail();
+
+      if (!userEmail) {
+        return {
+          status: 'failure',
+          message: 'No authenticated user email found',
+          records: {}
+        };
+      }
+
+      const response = await axiosInstance.post('/update-task-assignees', {
+        email: userEmail,
+        task_id: taskId,
+        assignees: assigneeIds
+      });
+
+      if (response.data.status === 'success' || response.data.result === 'success') {
+        return {
+          status: 'success',
+          message: response.data.message || 'Task assignees updated successfully',
+          records: response.data.records || {}
+        };
+      } else {
+        return {
+          status: 'failure',
+          message: response.data.message || 'Failed to update task assignees',
+          records: {}
+        };
+      }
+    } catch (error) {
+      console.error('Error updating task assignees:', error);
+      return {
+        status: 'failure',
+        message: 'Network error occurred while updating task assignees',
+        records: {}
+      };
+    }
+  },
+
+  // Assign/unassign employees to task using the assign-employees-task endpoint
+  updateTaskAssignments: async (
+    taskId: number,
+    assignUsers: number[] = [],
+    unassignUsers: number[] = [],
+    email?: string
+  ): Promise<ApiResponse<any>> => {
+    try {
+      // Use provided email or get from authenticated session
+      const userEmail = email || await getAuthenticatedUserEmail();
+
+      if (!userEmail) {
+        return {
+          status: 'failure',
+          message: 'No authenticated user email found',
+          records: {}
+        };
+      }
+
+      const response = await axiosInstance.post('/assign-employees-task', {
+        email: userEmail,
+        task_id: taskId,
+        assign_users: assignUsers,
+        unassign_users: unassignUsers
+      });
+
+      if (response.data.status === 'success' || response.data.result === 'success' || response.data.success) {
+        return {
+          status: 'success',
+          message: response.data.message || 'Task assignments updated successfully',
+          records: response.data.records || {}
+        };
+      } else {
+        return {
+          status: 'failure',
+          message: response.data.message || 'Failed to update task assignments',
+          records: {}
+        };
+      }
+    } catch (error) {
+      console.error('Error updating task assignments:', error);
+      return {
+        status: 'failure',
+        message: 'Network error occurred while updating task assignments',
+        records: {}
+      };
+    }
+  },
+
+  // Legacy method for backward compatibility - assigns a single employee
+  assignEmployeeToTask: async (taskId: number, employeeId: number, email?: string): Promise<ApiResponse<any>> => {
+    return taskManagementServices.updateTaskAssignments(taskId, [employeeId], [], email);
   },
 
   // Get stages list from masters-list API
