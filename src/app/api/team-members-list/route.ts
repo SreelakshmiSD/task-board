@@ -4,6 +4,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const email = searchParams.get('email');
+    const projectId = searchParams.get('project_id');
 
     if (!email) {
       return NextResponse.json(
@@ -12,10 +13,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log('🔄 Proxying team members request for email:', email);
+    console.log('🔄 Proxying team members request for email:', email, 'project_id:', projectId);
 
-    // Make the actual API call to the external service with timeout
-    const apiUrl = `https://workflow-dev.e8demo.com/team-members-list/?email=${encodeURIComponent(email)}`;
+    // Build the API URL with project_id parameter if provided
+    let apiUrl = `https://workflow-dev.e8demo.com/team-members-list/?email=${encodeURIComponent(email)}`;
+    if (projectId) {
+      apiUrl += `&project_id=${encodeURIComponent(projectId)}`;
+    }
     console.log('📡 Calling external API:', apiUrl);
 
     // Create an AbortController for timeout

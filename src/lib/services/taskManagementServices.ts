@@ -57,6 +57,37 @@ export interface ApiStatus {
   name: string;
 }
 
+export interface ApiPriority {
+  id: string;
+  name: string;
+}
+
+export interface ApiPriority {
+  id: string;
+  name: string;
+}
+
+// Subtask interfaces
+export interface SubTaskStatus {
+  id: number;
+  value: string;
+}
+
+export interface SubTaskCreatedBy {
+  id: number;
+  name: string;
+  email: string;
+  profile_pic: string;
+}
+
+export interface SubTask {
+  id: number;
+  name: string;
+  status: SubTaskStatus;
+  created_by: SubTaskCreatedBy;
+  created_at: string;
+}
+
 // Task interfaces
 export interface Task {
   id: number;
@@ -74,6 +105,8 @@ export interface Task {
   created_at?: string;
   updated_at?: string;
   due_date?: string;
+  sub_tasks?: SubTask[];
+  color?: string;
 }
 
 export interface Project {
@@ -260,13 +293,42 @@ export const taskManagementServices = {
   // Create new task
   createTask: async (taskData: Omit<Task, 'id' | 'created_at' | 'updated_at'>): Promise<ApiResponse<Task>> => {
     try {
-      const response = await axiosInstance.post('/tasks/', taskData);
-      
-      if (response.data.status === 'success') {
+      // Get authenticated user email
+      const userEmail = await getAuthenticatedUserEmail();
+
+      if (!userEmail) {
+        return {
+          status: 'failure',
+          message: 'No authenticated user email found',
+          records: {} as Task
+        };
+      }
+
+      // Prepare data for the create-task-common endpoint
+      const createTaskData = {
+        email: userEmail,
+        title: taskData.title,
+        description: taskData.description || '',
+        project: typeof taskData.project === 'object' ? taskData.project.id : taskData.project,
+        status: typeof taskData.status === 'object' ? taskData.status.id : taskData.status,
+        stage: typeof taskData.stage === 'object' ? taskData.stage.id : taskData.stage,
+        priority: typeof taskData.priority === 'object' ? taskData.priority.id : taskData.priority,
+        assigned_to: taskData.assigned_to || [],
+        due_date: taskData.due_date || null
+      };
+
+      // Call the create-task API route
+      const response = await axiosInstance.post('/create-task', createTaskData);
+      console.log("williom -----------------------create task response:", response);
+
+      // Check for both 'status' and 'result' fields for success
+      const isSuccess = response.data.status === 'success' || response.data.result === 'success';
+
+      if (isSuccess) {
         return {
           status: 'success',
-          message: response.data.message || 'Task created successfully',
-          records: response.data.records
+          message: response.data.message || 'Task created successfully via real API',
+          records: response.data.records || response.data.task || {}
         };
       } else {
         return {
@@ -517,8 +579,8 @@ export const taskManagementServices = {
     };
   },
 
-  // Get team members list by email
-  getTeamMembersList: async (email?: string): Promise<ApiResponse<ApiTeamMember[]>> => {
+  // Get team members list by email and optional project ID
+  getTeamMembersList: async (email?: string, projectId?: string | number): Promise<ApiResponse<ApiTeamMember[]>> => {
     try {
       // Use provided email or get from authenticated session
       const userEmail = email || await getAuthenticatedUserEmail();
@@ -531,10 +593,17 @@ export const taskManagementServices = {
         };
       }
 
+      const params: any = {
+        email: userEmail
+      };
+
+      // Add project_id parameter if provided
+      if (projectId) {
+        params.project_id = projectId;
+      }
+
       const response = await axiosInstance.get('/team-members-list', {
-        params: {
-          email: userEmail
-        }
+        params
       });
 
       if (response.data.result === 'success' || response.data.status === 'success') {
@@ -558,6 +627,103 @@ export const taskManagementServices = {
         records: []
       };
     }
+  },
+
+  // Update task assignees
+  updateTaskAssignees: async (taskId: number, assigneeIds: number[], email?: string): Promise<ApiResponse<any>> => {
+    try {
+      // Use provided email or get from authenticated session
+      const userEmail = email || await getAuthenticatedUserEmail();
+
+      if (!userEmail) {
+        return {
+          status: 'failure',
+          message: 'No authenticated user email found',
+          records: {}
+        };
+      }
+
+      const response = await axiosInstance.post('/update-task-assignees', {
+        email: userEmail,
+        task_id: taskId,
+        assignees: assigneeIds
+      });
+
+      if (response.data.status === 'success' || response.data.result === 'success') {
+        return {
+          status: 'success',
+          message: response.data.message || 'Task assignees updated successfully',
+          records: response.data.records || {}
+        };
+      } else {
+        return {
+          status: 'failure',
+          message: response.data.message || 'Failed to update task assignees',
+          records: {}
+        };
+      }
+    } catch (error) {
+      console.error('Error updating task assignees:', error);
+      return {
+        status: 'failure',
+        message: 'Network error occurred while updating task assignees',
+        records: {}
+      };
+    }
+  },
+
+  // Assign/unassign employees to task using the assign-employees-task endpoint
+  updateTaskAssignments: async (
+    taskId: number,
+    assignUsers: number[] = [],
+    unassignUsers: number[] = [],
+    email?: string
+  ): Promise<ApiResponse<any>> => {
+    try {
+      // Use provided email or get from authenticated session
+      const userEmail = email || await getAuthenticatedUserEmail();
+
+      if (!userEmail) {
+        return {
+          status: 'failure',
+          message: 'No authenticated user email found',
+          records: {}
+        };
+      }
+
+      const response = await axiosInstance.post('/assign-employees-task', {
+        email: userEmail,
+        task_id: taskId,
+        assign_users: assignUsers,
+        unassign_users: unassignUsers
+      });
+
+      if (response.data.status === 'success' || response.data.result === 'success' || response.data.success) {
+        return {
+          status: 'success',
+          message: response.data.message || 'Task assignments updated successfully',
+          records: response.data.records || {}
+        };
+      } else {
+        return {
+          status: 'failure',
+          message: response.data.message || 'Failed to update task assignments',
+          records: {}
+        };
+      }
+    } catch (error) {
+      console.error('Error updating task assignments:', error);
+      return {
+        status: 'failure',
+        message: 'Network error occurred while updating task assignments',
+        records: {}
+      };
+    }
+  },
+
+  // Legacy method for backward compatibility - assigns a single employee
+  assignEmployeeToTask: async (taskId: number, employeeId: number, email?: string): Promise<ApiResponse<any>> => {
+    return taskManagementServices.updateTaskAssignments(taskId, [employeeId], [], email);
   },
 
   // Get stages list from masters-list API
@@ -652,6 +818,50 @@ export const taskManagementServices = {
         status: 'failure',
         message: 'Network error occurred while fetching statuses - using fallback data',
         records: fallbackStatuses
+      };
+    }
+  },
+
+  // Get priorities list from masters-list API
+  getPrioritiesList: async (): Promise<ApiResponse<ApiPriority[]>> => {
+    try {
+      console.log('🔄 Fetching priorities from masters-list API...');
+
+      const response = await axiosInstance.get('/masters-list', {
+        params: {
+          action: 'task_priority'
+        }
+      });
+
+      if (response.data.status === 'success') {
+        console.log('✅ Priorities fetched successfully:', response.data.records?.length || 0);
+        return {
+          status: 'success',
+          message: response.data.message || 'Priorities fetched successfully',
+          records: response.data.records || []
+        };
+      } else {
+        console.log('❌ Priorities API error:', response.data.message);
+        return {
+          status: 'failure',
+          message: response.data.message || 'Failed to fetch priorities',
+          records: []
+        };
+      }
+    } catch (error) {
+      console.error('❌ Error fetching priorities:', error);
+
+      // Fallback to default priorities if API fails
+      const fallbackPriorities: ApiPriority[] = [
+        { id: '1', name: 'Low' },
+        { id: '2', name: 'Medium' },
+        { id: '3', name: 'High' }
+      ];
+
+      return {
+        status: 'failure',
+        message: 'Network error occurred while fetching priorities - using fallback data',
+        records: fallbackPriorities
       };
     }
   }
