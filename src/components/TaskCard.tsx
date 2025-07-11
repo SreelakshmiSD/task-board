@@ -2,8 +2,8 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Task, Employee } from '@/utils/api'
 import AvatarGroup from './AvatarGroup'
-import { Calendar, MoreHorizontal, X } from 'lucide-react'
-import { useState } from 'react'
+import { Calendar, MoreHorizontal, X, Palette, Tag } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 
 interface TaskCardProps {
   task: Task;
@@ -11,6 +11,8 @@ interface TaskCardProps {
   onClick?: () => void;
   viewMode?: "status" | "stage";
   isUpdating?: boolean;
+  onColorChange?: (taskId: number, color: string) => void;
+  onLabelsChange?: (taskId: number, labels: string[]) => void;
 }
 
 export default function TaskCard({
@@ -19,8 +21,20 @@ export default function TaskCard({
   onClick,
   viewMode = "status",
   isUpdating = false,
+  onColorChange,
+  onLabelsChange,
 }: TaskCardProps) {
   const [showDescriptionModal, setShowDescriptionModal] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showLabelPicker, setShowLabelPicker] = useState(false);
+  const [localLabels, setLocalLabels] = useState<string[]>(task.tags || []);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Sync local labels with task tags when task prop changes
+  useEffect(() => {
+    setLocalLabels(task.tags || []);
+  }, [task.tags]);
 
   const {
     attributes,
@@ -29,7 +43,21 @@ export default function TaskCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: task.id });
+  } = useSortable({
+    id: String(task.id), // Ensure ID is always a string
+    data: {
+      type: "task",
+      task: task,
+    },
+  });
+
+  // Debug logging for drag setup (only when dragging)
+  if (isDragging) {
+    console.log("🔄 TaskCard is being dragged:", {
+      taskId: task.id,
+      taskTitle: task.title,
+    });
+  }
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -52,7 +80,141 @@ export default function TaskCard({
       }))
     : [];
 
+  // Predefined labels based on API priority structure - ordered by priority (highest first)
+  const predefinedLabels = [
+    {
+      name: "Critical",
+      color: "bg-red-700",
+      textColor: "text-white",
+      priority: 5,
+    }, // API ID 4 - Critical
+    { name: "High", color: "bg-red-500", textColor: "text-white", priority: 4 }, // API ID 3 - High
+    {
+      name: "Intermediate",
+      color: "bg-yellow-500",
+      textColor: "text-white",
+      priority: 3,
+    }, // API ID 2 - Intermediate
+    {
+      name: "Low",
+      color: "bg-green-500",
+      textColor: "text-white",
+      priority: 2,
+    }, // API ID 1 - Low
+    {
+      name: "Non-billable",
+      color: "bg-gray-500",
+      textColor: "text-white",
+      priority: 1,
+    }, // API ID 5 - Non-billable
+    // Additional custom labels
+    {
+      name: "Bug",
+      color: "bg-orange-500",
+      textColor: "text-white",
+      priority: 4,
+    },
+    {
+      name: "Feature",
+      color: "bg-blue-500",
+      textColor: "text-white",
+      priority: 3,
+    },
+    {
+      name: "Review",
+      color: "bg-purple-500",
+      textColor: "text-white",
+      priority: 2,
+    },
+  ];
+
+  // Get label priority for sorting - use task's API priority
+  const getLabelPriority = (tag: string): number => {
+    // Handle task priority - check if it's an object with id/value or just a string
+    const taskPriority = task.priority;
+
+    if (
+      taskPriority &&
+      typeof taskPriority === "object" &&
+      "value" in taskPriority &&
+      "id" in taskPriority
+    ) {
+      // API priority object format: { id: number, value: string }
+      const priorityObj = taskPriority as { id: number; value: string };
+      if (tag.toLowerCase() === priorityObj.value.toLowerCase()) {
+        // Higher ID = higher priority for API priorities
+        return priorityObj.id;
+      }
+    } else if (typeof taskPriority === "string") {
+      // Simple string priority format
+      if (tag.toLowerCase() === taskPriority.toLowerCase()) {
+        const stringPriorityMapping: Record<string, number> = {
+          low: 1,
+          medium: 2,
+          high: 3,
+        };
+        return stringPriorityMapping[taskPriority.toLowerCase()] || 2;
+      }
+    }
+
+    // For predefined labels, use their priority
+    const predefinedLabel = predefinedLabels.find(
+      (label) => label.name === tag
+    );
+    if (predefinedLabel) {
+      return predefinedLabel.priority;
+    }
+
+    // Map common priority values to priority IDs based on actual API structure
+    const priorityMapping: Record<string, number> = {
+      low: 1, // API ID 1 = Low
+      intermediate: 2, // API ID 2 = Intermediate
+      medium: 2, // Same as intermediate
+      high: 3, // API ID 3 = High
+      critical: 4, // API ID 4 = Critical
+      "non-billable": 5, // API ID 5 = Non-billable
+      // Additional mappings
+      urgent: 4, // Same as critical
+      must: 4, // High priority
+      should: 3, // Medium priority
+      could: 2, // Low priority
+      bug: 4, // Critical priority
+      feature: 3, // High priority
+      review: 2, // Medium priority
+    };
+
+    const mappedPriority = priorityMapping[tag.toLowerCase()];
+    return mappedPriority || 99; // Unknown labels go to the end
+  };
+
+  // Sort labels by priority (higher priority ID = higher priority = appears first)
+  const getSortedLabels = (labels: string[]): string[] => {
+    const sorted = [...labels].sort(
+      (a, b) => getLabelPriority(b) - getLabelPriority(a) // Reverse sort for higher priority first
+    );
+
+    console.log("🏷️ Label sorting:", {
+      taskId: task.id,
+      taskPriority: task.priority,
+      originalLabels: labels,
+      sortedLabels: sorted,
+      priorities: labels.map((label) => ({
+        label,
+        priority: getLabelPriority(label),
+      })),
+    });
+
+    return sorted;
+  };
+
   const getTagColor = (tag: string) => {
+    const predefinedLabel = predefinedLabels.find(
+      (label) => label.name === tag
+    );
+    if (predefinedLabel) {
+      return `${predefinedLabel.color} ${predefinedLabel.textColor}`;
+    }
+
     const colors: Record<string, string> = {
       Product: "bg-blue-100 text-blue-800",
       Design: "bg-pink-100 text-pink-800",
@@ -64,6 +226,120 @@ export default function TaskCard({
     };
     return colors[tag] || "bg-gray-100 text-gray-800";
   };
+
+  // Available card colors similar to Trello
+  const cardColors = [
+    { name: "Default", value: "", bg: "bg-white", border: "border-gray-200" },
+    {
+      name: "Green",
+      value: "green",
+      bg: "bg-green-100",
+      border: "border-green-300",
+    },
+    {
+      name: "Yellow",
+      value: "yellow",
+      bg: "bg-yellow-100",
+      border: "border-yellow-300",
+    },
+    {
+      name: "Orange",
+      value: "orange",
+      bg: "bg-orange-100",
+      border: "border-orange-300",
+    },
+    { name: "Red", value: "red", bg: "bg-red-100", border: "border-red-300" },
+    {
+      name: "Purple",
+      value: "purple",
+      bg: "bg-purple-100",
+      border: "border-purple-300",
+    },
+    {
+      name: "Blue",
+      value: "blue",
+      bg: "bg-blue-100",
+      border: "border-blue-300",
+    },
+    { name: "Sky", value: "sky", bg: "bg-sky-100", border: "border-sky-300" },
+    {
+      name: "Pink",
+      value: "pink",
+      bg: "bg-pink-100",
+      border: "border-pink-300",
+    },
+    {
+      name: "Gray",
+      value: "gray",
+      bg: "bg-gray-100",
+      border: "border-gray-300",
+    },
+  ];
+
+  // Get card background and border classes based on color
+  const getCardColorClasses = (color?: string) => {
+    if (!color) return "bg-white border-gray-200";
+    const colorConfig = cardColors.find((c) => c.value === color);
+    return colorConfig
+      ? `${colorConfig.bg} ${colorConfig.border}`
+      : "bg-white border-gray-200";
+  };
+
+  // Handle color change
+  const handleColorChange = (color: string) => {
+    if (onColorChange) {
+      onColorChange(task.id, color);
+    }
+    setShowColorPicker(false);
+    setShowMoreMenu(false);
+  };
+
+  // Handle label toggle
+  const handleLabelToggle = (labelName: string) => {
+    if (!onLabelsChange) return;
+
+    const currentLabels = localLabels;
+    const isLabelSelected = currentLabels.includes(labelName);
+
+    let newLabels;
+    if (isLabelSelected) {
+      newLabels = currentLabels.filter((label) => label !== labelName);
+    } else {
+      newLabels = [...currentLabels, labelName];
+    }
+
+    console.log("🏷️ Label toggle:", {
+      taskId: task.id,
+      labelName,
+      currentLabels,
+      isLabelSelected,
+      newLabels,
+    });
+
+    // Update local state immediately for instant UI feedback
+    setLocalLabels(newLabels);
+
+    // Update parent state
+    onLabelsChange(task.id, newLabels);
+  };
+
+  // Close menus when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowMoreMenu(false);
+        setShowColorPicker(false);
+        setShowLabelPicker(false);
+      }
+    };
+
+    if (showMoreMenu || showColorPicker || showLabelPicker) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+      };
+    }
+  }, [showMoreMenu, showColorPicker, showLabelPicker]);
 
   // Helper function to clean HTML content from CKEditor
   const cleanHtmlContent = (htmlContent: string) => {
@@ -109,12 +385,13 @@ export default function TaskCard({
   return (
     <div
       ref={setNodeRef}
-      style={style}
       {...attributes}
       {...listeners}
       className={`
-        bg-white shadow-sm border border-gray-200 p-3 cursor-grab active:cursor-grabbing
-        hover:shadow-md transition-all duration-200 group
+        ${getCardColorClasses(
+          (task as any).color
+        )} shadow-sm border p-3 cursor-grab active:cursor-grabbing
+        hover:shadow-md transition-all duration-200 group relative
         ${isDragging ? "opacity-50 rotate-3 scale-105" : ""}
         ${
           isUpdating
@@ -122,6 +399,10 @@ export default function TaskCard({
             : ""
         }
       `}
+      style={{
+        ...style,
+        touchAction: "none", // Important for mobile drag
+      }}
       onClick={(e) => {
         // Don't trigger card click if description modal is open or if clicking on More button
         if (
@@ -132,15 +413,205 @@ export default function TaskCard({
         }
         onClick?.();
       }}
+      onMouseDown={(e) => {
+        console.log("🖱️ Mouse down on task:", task.title);
+      }}
     >
-      {/* Header */}
+      {/* Labels - Color bars without text at the very top - sorted by priority */}
+      {localLabels && localLabels.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          {getSortedLabels(localLabels).map((tag, index) => (
+            <span
+              key={index}
+              className={`w-8 h-2 rounded-full ${
+                getTagColor(tag).split(" ")[0]
+              }`}
+              title={tag} // Show label name on hover
+            ></span>
+          ))}
+        </div>
+      )}
+
+      {/* Header with Title and Menu */}
       <div className="flex items-start justify-between mb-2">
         <h3 className="font-medium text-gray-900 text-xs leading-tight flex-1 pr-2">
           {task.title}
         </h3>
-        <button className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-gray-100 rounded">
-          <MoreHorizontal className="w-3 h-3 text-gray-400" />
-        </button>
+        <div className="relative" ref={menuRef}>
+          <button
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-gray-100 rounded"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setShowMoreMenu(!showMoreMenu);
+            }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+            }}
+          >
+            <MoreHorizontal className="w-3 h-3 text-gray-400" />
+          </button>
+
+          {/* More Menu */}
+          {showMoreMenu && (
+            <div className="absolute right-0 top-6 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[160px]">
+              <div className="py-1">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-100"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowColorPicker(!showColorPicker);
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  <Palette className="w-3 h-3 mr-2" />
+                  Change color
+                </button>
+                <button
+                  className="flex items-center w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-100"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowLabelPicker(!showLabelPicker);
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  <Tag className="w-3 h-3 mr-2" />
+                  Edit labels
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Color Picker */}
+          {showColorPicker && (
+            <div className="absolute right-0 top-6 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-3">
+              <div className="grid grid-cols-5 gap-2">
+                {cardColors.map((color) => (
+                  <button
+                    key={color.value}
+                    className={`w-8 h-8 rounded border-2 hover:scale-110 transition-transform ${color.bg} ${color.border}`}
+                    title={color.name}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleColorChange(color.value);
+                    }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                    }}
+                  >
+                    {(task as any).color === color.value && (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <div className="w-2 h-2 bg-gray-600 rounded-full"></div>
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 pt-2 border-t border-gray-200">
+                <button
+                  className="text-xs text-gray-600 hover:text-gray-800"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleColorChange("");
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  Remove color
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Label Picker */}
+          {showLabelPicker && (
+            <div
+              className="absolute right-0 top-6 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-3 w-64"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+              }}
+            >
+              <div className="mb-2">
+                <h3 className="text-sm font-medium text-gray-900 mb-2">
+                  Labels
+                </h3>
+                <div className="space-y-1">
+                  {predefinedLabels
+                    .sort((a, b) => a.priority - b.priority) // Sort by priority (lowest number = highest priority)
+                    .map((label) => {
+                      const isSelected = localLabels.includes(label.name);
+                      console.log("🔍 Label check:", {
+                        taskId: task.id,
+                        labelName: label.name,
+                        taskTags: task.tags,
+                        localLabels,
+                        isSelected,
+                      });
+                      return (
+                        <div
+                          key={label.name}
+                          className="flex items-center space-x-2 p-1 rounded hover:bg-gray-50"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            id={`label-${task.id}-${label.name}`}
+                            checked={isSelected}
+                            onChange={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleLabelToggle(label.name);
+                            }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                            }}
+                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                          />
+                          <label
+                            htmlFor={`label-${task.id}-${label.name}`}
+                            className={`flex-1 px-2 py-1 rounded text-xs font-medium cursor-pointer ${label.color} ${label.textColor}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleLabelToggle(label.name);
+                            }}
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                            }}
+                          >
+                            {label.name}
+                          </label>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Description */}
@@ -183,22 +654,6 @@ export default function TaskCard({
           ></div>
         </div>
       </div>
-
-      {/* Tags - use stage and project as tags since API doesn't provide tags */}
-      {task.tags && task.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-2">
-          {task.tags.map((tag, index) => (
-            <span
-              key={index}
-              className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${getTagColor(
-                tag
-              )}`}
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
 
       {/* Due Date */}
       {task.due_date && (

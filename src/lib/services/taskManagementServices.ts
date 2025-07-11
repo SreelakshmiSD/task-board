@@ -67,6 +67,27 @@ export interface ApiPriority {
   name: string;
 }
 
+// Subtask interfaces
+export interface SubTaskStatus {
+  id: number;
+  value: string;
+}
+
+export interface SubTaskCreatedBy {
+  id: number;
+  name: string;
+  email: string;
+  profile_pic: string;
+}
+
+export interface SubTask {
+  id: number;
+  name: string;
+  status: SubTaskStatus;
+  created_by: SubTaskCreatedBy;
+  created_at: string;
+}
+
 // Task interfaces
 export interface Task {
   id: number;
@@ -84,6 +105,8 @@ export interface Task {
   created_at?: string;
   updated_at?: string;
   due_date?: string;
+  sub_tasks?: SubTask[];
+  color?: string;
 }
 
 export interface Project {

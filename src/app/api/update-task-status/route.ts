@@ -5,7 +5,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { email, task_id, status, stage } = body
 
-    console.log('📡 Update task status/stage request:', { email, task_id, status, stage })
+    console.log('📡 Update task status request:', { email, task_id, status, stage })
 
     if (!email || !task_id) {
       return NextResponse.json(
@@ -14,38 +14,95 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Prepare the API data
+    // Prepare the API data - your API only accepts email, task_id, and status
     const apiData: any = {
       email,
       task_id: parseInt(task_id.toString()),
     }
 
-    // Add status or stage based on what's being updated
+    // Determine which API endpoint to use and prepare data accordingly
+    let apiUrl: string;
+    let updateType: 'status' | 'stage';
+
     if (status !== undefined) {
+      // Status update - use task-status API
+      updateType = 'status';
+      apiUrl = 'https://workflow-dev.e8demo.com/task-status/';
+
       // Map status strings to status IDs
       const statusMap: { [key: string]: number } = {
-        'pending': 1,      // Intermediate
-        'ongoing': 2,      // On-going  
+        'pending': 1,      // Pending
+        'ongoing': 2,      // On-going
         'completed': 3,    // Completed
+        // Also handle the actual API values with proper casing
+        'Pending': 1,      // Pending
+        'On-going': 2,     // On-going
+        'Completed': 3,    // Completed
       }
-      apiData.status = statusMap[status] || 1
-    }
 
-    if (stage !== undefined) {
+      const statusId = statusMap[status];
+      if (statusId) {
+        apiData.status = statusId;
+        console.log(`📋 Status mapping: '${status}' → ID: ${statusId}`);
+      } else {
+        console.warn(`⚠️ Unknown status '${status}', defaulting to pending (1)`);
+        apiData.status = 1; // Default to pending
+      }
+    } else if (stage !== undefined) {
+      // Stage update - use task-stage API
+      updateType = 'stage';
+      apiUrl = 'https://workflow-dev.e8demo.com/task-stage/';
+
       // Map stage strings to stage IDs
       const stageMap: { [key: string]: number } = {
         'design': 47,      // Design
         'html': 48,        // HTML
         'development': 49, // Development
         'qa': 51,          // QA
+        // Also handle proper casing
+        'Design': 47,
+        'HTML': 48,
+        'Development': 49,
+        'QA': 51,
       }
-      apiData.stage = stageMap[stage] || 47
+
+      const stageId = stageMap[stage];
+      if (stageId) {
+        apiData.stage = stageId;
+        console.log(`🎯 Stage mapping: '${stage}' → ID: ${stageId}`);
+      } else {
+        console.warn(`⚠️ Unknown stage '${stage}', defaulting to design (47)`);
+        apiData.stage = 47; // Default to design
+      }
+    } else {
+      console.warn('⚠️ No status or stage provided');
+      return NextResponse.json(
+        { error: 'Either status or stage must be provided' },
+        { status: 400 }
+      )
     }
 
-    console.log('📡 Calling task-status API with data:', JSON.stringify(apiData, null, 2))
+    console.log(`📡 Calling ${updateType} API with data:`, JSON.stringify(apiData, null, 2))
+    console.log(`🎯 API Parameters Summary for ${updateType} update:`,
+      updateType === 'status'
+        ? { email: apiData.email, task_id: apiData.task_id, status: apiData.status }
+        : { email: apiData.email, task_id: apiData.task_id, stage: apiData.stage }
+    )
 
-    // Call the external API
-    const apiUrl = 'https://workflow-dev.e8demo.com/task-status/'
+    // Validate that we have all required parameters
+    const hasRequiredParams = updateType === 'status'
+      ? (apiData.email && apiData.task_id && apiData.status)
+      : (apiData.email && apiData.task_id && apiData.stage);
+
+    if (!hasRequiredParams) {
+      console.error('❌ Missing required parameters for API:', apiData)
+      return NextResponse.json(
+        { error: `Missing required parameters for ${updateType} update` },
+        { status: 400 }
+      )
+    }
+
+    console.log(`📡 Using API endpoint: ${apiUrl}`)
     
     // Try with form data first (as per your previous successful implementations)
     const formData = new FormData()
@@ -54,6 +111,11 @@ export async function POST(request: NextRequest) {
         formData.append(key, apiData[key].toString())
       }
     })
+
+    console.log('📡 FormData contents:')
+    for (let [key, value] of formData.entries()) {
+      console.log(`  ${key}: ${value}`)
+    }
 
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -65,6 +127,23 @@ export async function POST(request: NextRequest) {
     })
 
     console.log('📡 API response status:', response.status)
+
+    if (response.ok) {
+      const responseText = await response.text()
+      console.log('✅ API success response:', responseText)
+
+      try {
+        const jsonResponse = JSON.parse(responseText)
+        return NextResponse.json(jsonResponse)
+      } catch (parseError) {
+        console.log('📄 Response is not JSON, returning as text')
+        return NextResponse.json({
+          success: true,
+          message: 'Task updated successfully',
+          raw_response: responseText
+        })
+      }
+    }
 
     if (!response.ok) {
       const errorText = await response.text()

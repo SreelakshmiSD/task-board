@@ -25,6 +25,7 @@ export interface Task {
   due_date?: string
   created_at: string
   updated_at: string
+  color?: string
 }
 
 export interface Employee {
@@ -197,7 +198,7 @@ export const mockData = {
       priority: 'high' as const,
       assigned_to: [1, 2],
       project: 'Mobile App',
-      tags: ['Product', 'Design'],
+      tags: ['Must', 'Priority'],
       progress: 75,
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
@@ -211,7 +212,7 @@ export const mockData = {
       priority: 'medium' as const,
       assigned_to: [3],
       project: 'Mobile App',
-      tags: ['Product', 'Research'],
+      tags: ['Should', 'Review'],
       progress: 30,
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
@@ -225,7 +226,7 @@ export const mockData = {
       priority: 'low' as const,
       assigned_to: [1, 4],
       project: 'Design System',
-      tags: ['Design'],
+      tags: ['Could', 'Feature'],
       progress: 50,
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
@@ -239,7 +240,7 @@ export const mockData = {
       priority: 'high' as const,
       assigned_to: [2],
       project: 'Website',
-      tags: ['Frontend', 'HTML'],
+      tags: ['Bug', 'Reminder'],
       progress: 60,
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
