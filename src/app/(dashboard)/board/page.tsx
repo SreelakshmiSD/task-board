@@ -19,7 +19,7 @@ import { Employee, taskAPI, employeeAPI, mockData } from '@/utils/api'
 import { useTaskManagement } from '@/lib/hooks/useTaskManagement'
 import { useStages } from '@/lib/hooks/useStages'
 import { useStatuses } from '@/lib/hooks/useStatuses'
-import { Task, ApiStage, taskManagementServices } from '@/lib/services/taskManagementServices'
+import { Task, ApiStage, ApiTaskAssignee, taskManagementServices } from '@/lib/services/taskManagementServices'
 import { authUtils } from '@/lib/utils/api-config'
 import TaskColumn from '@/components/TaskColumn'
 import Filters from '@/components/Filters'
@@ -109,6 +109,20 @@ export default function BoardPage() {
 
     // Here you could also make an API call to persist the labels change
     // For now, we'll just update the local state
+  };
+
+  // Assignees change handler - now only updates local state since AssigneeDropdown handles API calls
+  const handleAssigneesChange = (taskId: number, assignees: ApiTaskAssignee[]) => {
+    console.log('👥 Handling assignees change:', { taskId, assignees });
+
+    // Update the task assignees in local state
+    setApiTasks((prevTasks) =>
+      prevTasks.map((task) =>
+        task.id === taskId ? { ...task, assignees } : task
+      )
+    );
+
+    console.log('✅ Local state updated with new assignees');
   };
 
   // Side menu handlers
@@ -1031,7 +1045,6 @@ export default function BoardPage() {
   // Drag handlers
   const handleDragStart = (event: DragStartEvent) => {
     console.log("🚀 DRAG STARTED! Task ID:", event.active.id);
-    // alert("🚀 Drag started! Check console for details.");
 
     const task = tasks.find((t) => String(t.id) === String(event.active.id));
     console.log("🔄 Found task for drag:", task);
@@ -1041,12 +1054,10 @@ export default function BoardPage() {
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     console.log("🎯 DRAG ENDED! Active:", active.id, "Over:", over?.id);
-    // alert("🎯 Drag ended! Check console for details.");
     setDraggedTask(null);
 
     if (!over) {
       console.log("❌ No drop target");
-      alert("❌ No drop target - drag was cancelled");
       return;
     }
 
@@ -1056,7 +1067,6 @@ export default function BoardPage() {
 
     if (!task) {
       console.log("❌ Task not found for ID:", taskId);
-      alert("❌ Task not found!");
       return;
     }
 
@@ -1080,9 +1090,10 @@ export default function BoardPage() {
     const isColumnId = columns.some((col) => col.id === overId);
 
     if (isColumnId) {
-      // It's a column ID
-      newColumn = overId;
-      console.log("✅ Dropped on column:", newColumn);
+      // It's a column ID - convert to title
+      const column = columns.find((col) => col.id === overId);
+      newColumn = column ? column.title : overId;
+      console.log("✅ Dropped on column:", { columnId: overId, columnTitle: newColumn });
     } else {
       // It's likely a task ID - find which column that task belongs to
       const targetTask = tasks.find((t) => String(t.id) === overId);
@@ -1094,7 +1105,6 @@ export default function BoardPage() {
         console.log("✅ Dropped on task, target column:", newColumn);
       } else {
         console.log("❌ Invalid drop target:", overId);
-        alert("❌ Invalid drop target");
         setUpdatingTaskId(null);
         return;
       }
@@ -1114,26 +1124,22 @@ export default function BoardPage() {
 
     if (currentValue === newColumn) {
       console.log("⚠️ Task is already in target column, skipping API call");
-      alert("⚠️ Task is already in the target column!");
       setUpdatingTaskId(null);
       return;
     }
 
-    // Validate that the new column is valid - using actual API values
-    const validColumns =
-      viewMode === "status"
-        ? ["Pending", "On-going", "Completed"] // Match actual status API values
-        : ["Design", "HTML", "Development", "QA"]; // Match actual stage API values
+    // Validate that the new column is valid - using dynamic columns
+    const validColumns = columns.map(col => col.title);
 
     console.log("🔍 Column validation:", {
       newColumn,
       validColumns,
       isValid: validColumns.includes(newColumn),
+      availableColumns: columns.map(c => ({ id: c.id, title: c.title }))
     });
 
     if (!validColumns.includes(newColumn)) {
       console.log("❌ Invalid column, skipping API call");
-      alert("❌ Invalid column: " + newColumn);
       setUpdatingTaskId(null);
       return;
     }
@@ -1156,10 +1162,8 @@ export default function BoardPage() {
 
       if (!success) {
         console.error("❌ Failed to update task via drag & drop");
-        alert("❌ Failed to update task via drag & drop");
       } else {
         console.log("✅ Task updated successfully via drag & drop");
-        alert("✅ SUCCESS");
       }
     } catch (error) {
       console.error("❌ Error updating task via drag & drop:", error);
@@ -1436,6 +1440,7 @@ export default function BoardPage() {
                     projects={projects}
                     onColorChange={handleColorChange}
                     onLabelsChange={handleLabelsChange}
+                    onAssigneesChange={handleAssigneesChange}
                   />
                 ))}
               </div>

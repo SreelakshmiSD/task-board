@@ -8,6 +8,7 @@ import InlineCardCreator from "./InlineCardCreator";
 import { Plus, ArrowRight, ArrowLeft } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { ApiTaskAssignee } from '@/lib/services/taskManagementServices';
 
 interface TaskColumnProps {
   id: string;
@@ -23,6 +24,7 @@ interface TaskColumnProps {
   projects?: Array<{ id: number; name: string }>; // Available projects for ID lookup
   onColorChange?: (taskId: number, color: string) => void;
   onLabelsChange?: (taskId: number, labels: string[]) => void;
+  onAssigneesChange?: (taskId: number, assignees: ApiTaskAssignee[]) => void;
 }
 
 export default function TaskColumn({
@@ -39,6 +41,7 @@ export default function TaskColumn({
   projects = [],
   onColorChange,
   onLabelsChange,
+  onAssigneesChange,
 }: TaskColumnProps) {
   const { data: session } = useSession();
   const userEmail = session?.user?.email;
@@ -423,6 +426,7 @@ export default function TaskColumn({
                 isUpdating={updatingTaskId === task.id}
                 onColorChange={onColorChange}
                 onLabelsChange={onLabelsChange}
+                onAssigneesChange={onAssigneesChange}
               />
             ))}
           </SortableContext>
