@@ -5,6 +5,7 @@ interface AssigneeListProps {
   maxVisible?: number
   size?: 'sm' | 'md' | 'lg'
   email?: string
+  projectId?: string | number
   className?: string
 }
 
@@ -12,6 +13,7 @@ export default function AssigneeList({
   maxVisible = 3,
   size = 'md',
   email,
+  projectId,
   className = ''
 }: AssigneeListProps) {
   const [teamMembers, setTeamMembers] = useState<ApiTeamMember[]>([])
@@ -19,6 +21,7 @@ export default function AssigneeList({
   const [error, setError] = useState<string | null>(null)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [profilePictures, setProfilePictures] = useState<Record<number, string>>({})
+  const [tooltipPosition, setTooltipPosition] = useState<{top: number, left: number} | null>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
 
   const visibleMembers = teamMembers.slice(0, maxVisible)
@@ -39,6 +42,32 @@ export default function AssigneeList({
   // Generate initials from first and last name
   const getInitials = (firstName: string, lastName: string): string => {
     return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase()
+  }
+
+  const calculateTooltipPosition = (element: HTMLElement) => {
+    const rect = element.getBoundingClientRect()
+    const tooltipHeight = 40 // Approximate tooltip height
+    const tooltipWidth = 150 // Approximate tooltip width
+
+    let top = rect.top - tooltipHeight - 8 // Position above the element
+    let left = rect.left + (rect.width / 2) - (tooltipWidth / 2) // Center horizontally
+
+    // Ensure tooltip doesn't go off the top of the screen
+    if (top < 8) {
+      top = rect.bottom + 8 // Position below if not enough space above
+    }
+
+    // Ensure tooltip doesn't go off the left edge
+    if (left < 8) {
+      left = 8
+    }
+
+    // Ensure tooltip doesn't go off the right edge
+    if (left + tooltipWidth > window.innerWidth - 8) {
+      left = window.innerWidth - tooltipWidth - 8
+    }
+
+    return { top, left }
   }
 
   // Generate a consistent color based on the member's ID
@@ -65,11 +94,12 @@ export default function AssigneeList({
       setError(null)
 
       try {
-        // Fetch team members
-        const teamResponse = await taskManagementServices.getTeamMembersList(email)
+        // Fetch team members with project ID if provided
+        const teamResponse = await taskManagementServices.getTeamMembersList(email, projectId)
 
         if (teamResponse.status === 'success') {
           setTeamMembers(teamResponse.records)
+          console.log('🔍 AssigneeList - Fetched team members for project:', projectId, 'Count:', teamResponse.records.length)
 
           // Fetch tasks to get profile pictures from assignees
           const tasksResponse = await taskManagementServices.getTasksList(email)
@@ -91,16 +121,21 @@ export default function AssigneeList({
           }
         } else {
           setError(teamResponse.message)
+          console.error('❌ AssigneeList - Failed to fetch team members:', teamResponse.message)
         }
       } catch (err) {
         setError('Failed to fetch team members')
+        console.error('❌ AssigneeList - Error fetching team members:', err)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchData()
-  }, [email])
+    // Only fetch if email is provided
+    if (email) {
+      fetchData()
+    }
+  }, [email, projectId])
 
   if (loading) {
     return (
@@ -130,14 +165,22 @@ export default function AssigneeList({
       {visibleMembers.map((member, index) => (
         <div
           key={member.id}
+          data-member-id={member.id}
           className={`
             ${sizeClasses[size]}
             ${index > 0 ? marginClasses[size] : ''}
             rounded-full border-2 border-white shadow-sm flex items-center justify-center font-medium text-white cursor-pointer relative
           `}
           style={{ backgroundColor: getColor(member.id) }}
-          onMouseEnter={() => setHoveredIndex(index)}
-          onMouseLeave={() => setHoveredIndex(null)}
+          onMouseEnter={(e) => {
+            setHoveredIndex(index)
+            const position = calculateTooltipPosition(e.currentTarget as HTMLElement)
+            setTooltipPosition(position)
+          }}
+          onMouseLeave={() => {
+            setHoveredIndex(null)
+            setTooltipPosition(null)
+          }}
         >
           {(member.profile_pic || profilePictures[member.id]) ? (
             <img
@@ -150,13 +193,13 @@ export default function AssigneeList({
           )}
 
           {/* Custom Tooltip - only show for this specific member when hovered */}
-          {hoveredIndex === index && (
+          {hoveredIndex === index && tooltipPosition && (
             <div
               ref={tooltipRef}
-              className="absolute bottom-full mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-md transition-opacity duration-200 pointer-events-none whitespace-nowrap z-[9999] shadow-lg"
+              className="fixed px-3 py-2 bg-gray-800 text-white text-xs rounded-md transition-opacity duration-200 pointer-events-none whitespace-nowrap z-[9999] shadow-lg"
               style={{
-                right: '0',
-                transform: 'none',
+                top: `${tooltipPosition.top}px`,
+                left: `${tooltipPosition.left}px`,
                 minWidth: 'max-content',
                 width: 'max-content',
                 maxWidth: 'none'
@@ -164,11 +207,7 @@ export default function AssigneeList({
             >
               {member.first_name} {member.last_name}
               <div
-                className="absolute top-full border-4 border-transparent border-t-gray-800"
-                style={{
-                  right: '16px',
-                  transform: 'none'
-                }}
+                className="absolute top-full left-4 border-4 border-transparent border-t-gray-800"
               ></div>
             </div>
           )}
@@ -177,23 +216,31 @@ export default function AssigneeList({
       
       {remainingCount > 0 && (
         <div
+          data-remaining-count="true"
           className={`
             ${sizeClasses[size]}
             ${marginClasses[size]}
             rounded-full border-2 border-white shadow-sm flex items-center justify-center font-medium text-gray-600 bg-gray-200 cursor-pointer relative
           `}
-          onMouseEnter={() => setHoveredIndex(-1)}
-          onMouseLeave={() => setHoveredIndex(null)}
+          onMouseEnter={(e) => {
+            setHoveredIndex(-1)
+            const position = calculateTooltipPosition(e.currentTarget as HTMLElement)
+            setTooltipPosition(position)
+          }}
+          onMouseLeave={() => {
+            setHoveredIndex(null)
+            setTooltipPosition(null)
+          }}
         >
           <span>+{remainingCount}</span>
 
           {/* Custom Tooltip for remaining count */}
-          {hoveredIndex === -1 && (
+          {hoveredIndex === -1 && tooltipPosition && (
             <div
-              className="absolute bottom-full mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-md transition-opacity duration-200 pointer-events-none whitespace-nowrap z-[9999] shadow-lg"
+              className="fixed px-3 py-2 bg-gray-800 text-white text-xs rounded-md transition-opacity duration-200 pointer-events-none whitespace-nowrap z-[9999] shadow-lg"
               style={{
-                right: '0',
-                transform: 'none',
+                top: `${tooltipPosition.top}px`,
+                left: `${tooltipPosition.left}px`,
                 minWidth: 'max-content',
                 width: 'max-content',
                 maxWidth: 'none'
@@ -201,11 +248,7 @@ export default function AssigneeList({
             >
               {remainingCount} more team members
               <div
-                className="absolute top-full border-4 border-transparent border-t-gray-800"
-                style={{
-                  right: '16px',
-                  transform: 'none'
-                }}
+                className="absolute top-full left-4 border-4 border-transparent border-t-gray-800"
               ></div>
             </div>
           )}

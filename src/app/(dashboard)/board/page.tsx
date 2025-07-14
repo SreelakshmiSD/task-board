@@ -25,6 +25,7 @@ import TaskColumn from '@/components/TaskColumn'
 import Filters from '@/components/Filters'
 import AvatarGroup from '@/components/AvatarGroup'
 import AssigneeList from '@/components/AssigneeList'
+import ProjectAssigneeManager from '@/components/ProjectAssigneeManager'
 import TaskOverview from '@/components/TaskOverview'
 import DateRangePicker from '@/components/DateRangePicker'
 import SideMenu from '@/components/SideMenu'
@@ -1269,10 +1270,15 @@ export default function BoardPage() {
                 </label>
               </div>
 
-              <AssigneeList
+              <ProjectAssigneeManager
                 maxVisible={3}
                 size="md"
                 email={userEmail || undefined}
+                projectId={
+                  selectedProject && selectedProject !== "" && selectedProject !== "all"
+                    ? projects.find((p) => p.name === selectedProject)?.id
+                    : undefined
+                }
               />
 
               {/* User Menu */}
@@ -1438,6 +1444,7 @@ export default function BoardPage() {
                     updatingTaskId={updatingTaskId}
                     selectedProject={selectedProject}
                     projects={projects}
+                    stages={projectStages.length > 0 ? projectStages : stages}
                     onColorChange={handleColorChange}
                     onLabelsChange={handleLabelsChange}
                     onAssigneesChange={handleAssigneesChange}
