@@ -258,17 +258,47 @@ export default function AssigneeDropdown({
 
         if (taskCard) {
           const cardRect = taskCard.getBoundingClientRect();
-          setDropdownPosition({
-            top: cardRect.bottom + window.scrollY + 8,
-            left: cardRect.left + window.scrollX
-          });
+          const dropdownHeight = 384; // max-h-96 = 384px
+          const viewportHeight = window.innerHeight;
+          const spaceBelow = viewportHeight - cardRect.bottom;
+          const spaceAbove = cardRect.top;
+
+          let top = cardRect.bottom + window.scrollY + 8;
+          let left = cardRect.left + window.scrollX;
+
+          // If there's not enough space below and more space above, position above
+          if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+            top = cardRect.top + window.scrollY - dropdownHeight - 8;
+          }
+
+          // Ensure dropdown doesn't go off the right edge
+          const dropdownWidth = 320; // w-80 = 320px
+          if (left + dropdownWidth > window.innerWidth) {
+            left = window.innerWidth - dropdownWidth - 16;
+          }
+
+          // Ensure dropdown doesn't go off the left edge
+          if (left < 16) {
+            left = 16;
+          }
+
+          setDropdownPosition({ top, left });
         } else {
           // Fallback to trigger position
           const rect = triggerRef.current.getBoundingClientRect();
-          setDropdownPosition({
-            top: rect.bottom + window.scrollY + 8,
-            left: rect.left + window.scrollX
-          });
+          const dropdownHeight = 384;
+          const viewportHeight = window.innerHeight;
+          const spaceBelow = viewportHeight - rect.bottom;
+          const spaceAbove = rect.top;
+
+          let top = rect.bottom + window.scrollY + 8;
+          let left = rect.left + window.scrollX;
+
+          if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+            top = rect.top + window.scrollY - dropdownHeight - 8;
+          }
+
+          setDropdownPosition({ top, left });
         }
       }
       setSearchQuery('');
@@ -385,10 +415,12 @@ export default function AssigneeDropdown({
       {isOpen && !disabled && dropdownPosition && typeof window !== 'undefined' && createPortal(
         <div
           ref={dropdownRef}
-          className="fixed bg-white border border-gray-200 shadow-xl rounded-lg w-80 max-h-96 flex flex-col z-[9999] overflow-hidden"
+          className="fixed bg-white border border-gray-200 shadow-xl rounded-lg w-80 flex flex-col z-[9999] overflow-hidden"
           style={{
             top: dropdownPosition.top,
-            left: dropdownPosition.left
+            left: dropdownPosition.left,
+            maxHeight: Math.min(384, window.innerHeight - 32), // Ensure it fits in viewport with padding
+            minHeight: '200px' // Ensure minimum height for usability
           }}
           onWheel={(e) => {
             e.stopPropagation();
@@ -419,6 +451,10 @@ export default function AssigneeDropdown({
           {/* Members List */}
           <div
             className="flex-1 overflow-y-auto overscroll-contain"
+            style={{
+              maxHeight: 'calc(100% - 120px)', // Reserve space for header (60px) and footer (60px)
+              minHeight: '120px' // Ensure minimum usable height
+            }}
             onWheel={(e) => {
               e.stopPropagation();
               e.preventDefault();

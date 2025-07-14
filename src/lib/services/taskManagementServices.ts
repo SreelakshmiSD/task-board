@@ -726,10 +726,61 @@ export const taskManagementServices = {
     return taskManagementServices.updateTaskAssignments(taskId, [employeeId], [], email);
   },
 
-  // Get stages list from masters-list API
-  getStagesList: async (projectId?: string): Promise<ApiResponse<ApiStage[]>> => {
+  // Assign/unassign employees to project using the assign-employees-project endpoint
+  updateProjectAssignments: async (
+    projectId: number,
+    assignUsers: number[] = [],
+    unassignUsers: number[] = [],
+    email?: string
+  ): Promise<ApiResponse<any>> => {
     try {
-      console.log('🔄 Fetching stages from masters-list API...', projectId ? `for project ${projectId}` : 'all stages');
+      // Use provided email or get from authenticated session
+      const userEmail = email || await getAuthenticatedUserEmail();
+
+      if (!userEmail) {
+        return {
+          status: 'failure',
+          message: 'No authenticated user email found',
+          records: {}
+        };
+      }
+
+      const response = await axiosInstance.post('/assign-employees-project', {
+        email: userEmail,
+        project_id: projectId,
+        assign_users: assignUsers,
+        unassign_users: unassignUsers
+      });
+
+      if (response.data.result === 'success' || response.data.status === 'success') {
+        console.log('✅ Project assignments updated successfully');
+        return {
+          status: 'success',
+          message: response.data.message || 'Project assignments updated successfully',
+          records: response.data
+        };
+      } else {
+        console.log('❌ Project assignment API error:', response.data.message);
+        return {
+          status: 'failure',
+          message: response.data.message || 'Failed to update project assignments',
+          records: {}
+        };
+      }
+    } catch (error) {
+      console.error('❌ Error updating project assignments:', error);
+      return {
+        status: 'failure',
+        message: 'Failed to update project assignments',
+        records: {}
+      };
+    }
+  },
+
+  // Get stages list from masters-list API
+  getStagesList: async (projectId?: string, isRetry: boolean = false): Promise<ApiResponse<ApiStage[]>> => {
+    try {
+      console.log('🔄 Fetching stages from masters-list API...', projectId ? `for project ${projectId}` : 'all stages', isRetry ? '(retry)' : '');
 
       const params: any = {
         action: 'stage'
@@ -745,20 +796,63 @@ export const taskManagementServices = {
       });
 
       if (response.data.status === 'success') {
-        console.log('✅ Stages fetched successfully:', response.data.records?.length || 0);
-        return {
-          status: 'success',
-          message: response.data.message || 'Stages fetched successfully',
-          records: response.data.records || []
-        };
+        const records = response.data.records || [];
+        console.log('✅ Stages API response received:', records.length, 'records');
+
+        // Validate that the records are actually stages (should have id and title/name)
+        // If they look like team members (have first_name, last_name, email), fall back to general stages
+        if (records.length > 0) {
+          const firstRecord = records[0];
+          const isTeamMemberData = firstRecord.first_name || firstRecord.last_name || firstRecord.email;
+
+          if (isTeamMemberData && projectId && !isRetry) {
+            console.log('⚠️ Project-specific stages API returned team member data, falling back to general stages');
+            // Retry without project_id to get general stages
+            return await taskManagementServices.getStagesList(undefined, true);
+          }
+
+          // Check if records have the expected stage structure
+          const hasStageStructure = firstRecord.id && (firstRecord.title || firstRecord.name);
+          if (!hasStageStructure && projectId && !isRetry) {
+            console.log('⚠️ Invalid stage data structure for project-specific stages, falling back to general stages');
+            // Retry without project_id to get general stages
+            return await taskManagementServices.getStagesList(undefined, true);
+          } else if (!hasStageStructure) {
+            console.log('⚠️ Invalid stage data structure even for general stages, using fallback data');
+            // If even general stages fail, use fallback data instead of throwing error
+            const fallbackStages: ApiStage[] = [
+              { id: 47, title: 'Design' },
+              { id: 48, title: 'HTML' },
+              { id: 49, title: 'Development' },
+              { id: 51, title: 'QA' }
+            ];
+
+            return {
+              status: 'failure',
+              message: 'Invalid stage data structure - using fallback data',
+              records: fallbackStages
+            };
+          }
+
+          // Convert to consistent format (ensure title field exists)
+          const normalizedRecords = records.map((record: any) => ({
+            id: record.id,
+            title: record.title || record.name || `Stage ${record.id}`
+          }));
+
+          console.log('✅ Stages fetched and normalized:', normalizedRecords.length);
+          return {
+            status: 'success',
+            message: response.data.message || 'Stages fetched successfully',
+            records: normalizedRecords
+          };
+        }
       } else {
         console.log('❌ Stages API error:', response.data.message);
-        return {
-          status: 'failure',
-          message: response.data.message || 'Failed to fetch stages',
-          records: []
-        };
       }
+
+      // If we reach here, something went wrong, use fallback
+      throw new Error(response.data.message || 'Failed to fetch stages');
     } catch (error) {
       console.error('❌ Error fetching stages:', error);
 
