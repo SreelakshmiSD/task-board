@@ -8,7 +8,7 @@ import InlineCardCreator from "./InlineCardCreator";
 import { Plus, ArrowRight, ArrowLeft } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { ApiTaskAssignee } from '@/lib/services/taskManagementServices';
+import { ApiTaskAssignee, ApiStage } from '@/lib/services/taskManagementServices';
 
 interface TaskColumnProps {
   id: string;
@@ -22,6 +22,7 @@ interface TaskColumnProps {
   updatingTaskId?: number | null; // ID of task currently being updated via drag & drop
   selectedProject?: string; // Currently selected project name
   projects?: Array<{ id: number; name: string }>; // Available projects for ID lookup
+  stages?: ApiStage[]; // Available stages for stage ID mapping
   onColorChange?: (taskId: number, color: string) => void;
   onLabelsChange?: (taskId: number, labels: string[]) => void;
   onAssigneesChange?: (taskId: number, assignees: ApiTaskAssignee[]) => void;
@@ -39,6 +40,7 @@ export default function TaskColumn({
   updatingTaskId,
   selectedProject,
   projects = [],
+  stages = [],
   onColorChange,
   onLabelsChange,
   onAssigneesChange,
@@ -133,6 +135,10 @@ export default function TaskColumn({
       pending: "New Task",
       ongoing: "In Progress Task",
       completed: "Completed Task",
+      // Additional stage mappings
+      newproject: "New Project Task",
+      cr: "CR Task",
+      amc: "AMC Task",
     };
 
     const defaultPriorityMap: { [key: string]: string } = {
@@ -226,24 +232,57 @@ export default function TaskColumn({
 
       // Map column ID to correct stage ID based on your API
       const getStageId = (columnId: string, viewMode: string): number => {
+        console.log(`🎯 getStageId called with columnId: "${columnId}", viewMode: "${viewMode}"`);
+        console.log(`🎯 Available stages:`, stages);
+
         if (viewMode === "stage") {
-          // If we're in stage view, use the column ID directly
+          // First try to parse as direct numeric ID
+          const numericId = parseInt(columnId);
+          if (!isNaN(numericId)) {
+            console.log(`🎯 Using numeric column ID directly: ${numericId}`);
+            return numericId;
+          }
+
+          // If we're in stage view, try to find the stage by matching the column title
+          // Get all available stages from the context
+          const availableStages = stages || [];
+
+          // Try to find a matching stage by converting title to column ID format
+          const matchingStage = availableStages.find(stage => {
+            const stageColumnId = stage.title.toLowerCase().replace(/\s+/g, "");
+            console.log(`🎯 Comparing "${stageColumnId}" with "${columnId}"`);
+            return stageColumnId === columnId;
+          });
+
+          if (matchingStage) {
+            console.log(`🎯 Found matching stage for column "${columnId}":`, matchingStage);
+            return matchingStage.id;
+          }
+
+          // Fallback to static mapping for known stages
           const stageIdMap: { [key: string]: number } = {
             "47": 47, // Design
             "48": 48, // HTML
             "49": 49, // Development
             "51": 51, // QA
             "46": 46, // Discovery
-            // Fallback for string-based IDs
+            // String-based fallbacks
             design: 47,
             html: 48,
             development: 49,
             qa: 51,
             discovery: 46,
+            newproject: 47, // Default new project to Design stage
+            cr: 49, // Default CR to Development stage
+            amc: 49, // Default AMC to Development stage
           };
-          return stageIdMap[columnId] || 47;
+
+          const stageId = stageIdMap[columnId] || 47;
+          console.log(`🎯 Using fallback stage ID for column "${columnId}": ${stageId}`);
+          return stageId;
         }
         // For status-based view, always use stage 49 (Development)
+        console.log(`🎯 Status-based view, using stage 49`);
         return 49;
       };
 
@@ -286,7 +325,6 @@ export default function TaskColumn({
       };
 
       console.log("Creating quick task with API format:", apiData);
-      alert("Creating quick task with API format:" + JSON.stringify(apiData));
 
       // Call the API directly instead of using the service
       const response = await fetch("/api/create-task", {
@@ -297,19 +335,26 @@ export default function TaskColumn({
         body: JSON.stringify(apiData),
       });
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const result = await response.json();
       console.log("Quick task creation result:", result);
 
       if (result.status === "success" || result.result === "success") {
+        console.log("✅ Task created successfully!");
         setShowInlineCreator(false);
         if (onTaskCreated) {
           onTaskCreated();
         }
       } else {
-        console.error("Failed to create task:", result.message);
+        console.error("❌ Failed to create task:", result.message || result);
+        alert("Failed to create task: " + (result.message || "Unknown error"));
       }
     } catch (error) {
-      console.error("Error creating quick task:", error);
+      console.error("❌ Error creating quick task:", error);
+      alert("Error creating task: " + (error instanceof Error ? error.message : "Unknown error"));
     }
   };
 
@@ -452,21 +497,7 @@ export default function TaskColumn({
             />
           )}
 
-          {tasks.length === 0 && !isOver && !showInlineCreator && (
-            <div className="flex flex-col items-center justify-center py-8 text-gray-400">
-              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
-                <Plus className="w-6 h-6" />
-              </div>
-              <p className="text-sm">No tasks yet</p>
-              <p className="text-xs">Drag tasks here or click + to add</p>
-              <button
-                onClick={() => setShowInlineCreator(true)}
-                className="mt-3 px-3 py-1.5 text-sm font-medium bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors duration-200"
-              >
-                + Add a card
-              </button>
-            </div>
-          )}
+
 
           {isOver && (
             <div className="flex items-center justify-center py-4 text-blue-500">

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, User, X } from 'lucide-react';
+import { Check, User, X, Search } from 'lucide-react';
 import { taskManagementServices, ApiTeamMember, ApiTaskAssignee } from '@/lib/services/taskManagementServices';
 
 interface AssigneeDropdownProps {
@@ -30,6 +30,7 @@ export default function AssigneeDropdown({
   const [pendingAssignees, setPendingAssignees] = useState<ApiTaskAssignee[]>(currentAssignees);
   const [saving, setSaving] = useState(false);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [isFetching, setIsFetching] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -102,12 +103,15 @@ export default function AssigneeDropdown({
 
   // Fetch team members when dropdown opens
   useEffect(() => {
-    if (isOpen && teamMembers.length === 0) {
+    if (isOpen && teamMembers.length === 0 && !isFetching) {
       fetchTeamMembers();
     }
   }, [isOpen]);
 
-  const fetchTeamMembers = async () => {
+  const fetchTeamMembers = async (retryCount = 0) => {
+    if (isFetching) return; // Prevent multiple simultaneous requests
+
+    setIsFetching(true);
     setLoading(true);
     try {
       const response = await taskManagementServices.getTeamMembersList(email, projectId);
@@ -115,11 +119,24 @@ export default function AssigneeDropdown({
         setTeamMembers(response.records);
       } else {
         console.error('Failed to fetch team members:', response.message);
+        // If it's a failure but not a network error, don't retry
+        if (retryCount === 0) {
+          console.log('Retrying team members fetch...');
+          setTimeout(() => fetchTeamMembers(1), 1000);
+          return;
+        }
       }
     } catch (error) {
       console.error('Error fetching team members:', error);
+      // Retry once on network errors
+      if (retryCount === 0) {
+        console.log('Retrying team members fetch after error...');
+        setTimeout(() => fetchTeamMembers(1), 1000);
+        return;
+      }
     } finally {
       setLoading(false);
+      setIsFetching(false);
     }
   };
 
@@ -258,17 +275,47 @@ export default function AssigneeDropdown({
 
         if (taskCard) {
           const cardRect = taskCard.getBoundingClientRect();
-          setDropdownPosition({
-            top: cardRect.bottom + window.scrollY + 8,
-            left: cardRect.left + window.scrollX
-          });
+          const dropdownHeight = 384; // max-h-96 = 384px
+          const viewportHeight = window.innerHeight;
+          const spaceBelow = viewportHeight - cardRect.bottom;
+          const spaceAbove = cardRect.top;
+
+          let top = cardRect.bottom + window.scrollY + 8;
+          let left = cardRect.left + window.scrollX;
+
+          // If there's not enough space below and more space above, position above
+          if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+            top = cardRect.top + window.scrollY - dropdownHeight - 8;
+          }
+
+          // Ensure dropdown doesn't go off the right edge
+          const dropdownWidth = 288; // w-72 = 288px
+          if (left + dropdownWidth > window.innerWidth) {
+            left = window.innerWidth - dropdownWidth - 16;
+          }
+
+          // Ensure dropdown doesn't go off the left edge
+          if (left < 16) {
+            left = 16;
+          }
+
+          setDropdownPosition({ top, left });
         } else {
           // Fallback to trigger position
           const rect = triggerRef.current.getBoundingClientRect();
-          setDropdownPosition({
-            top: rect.bottom + window.scrollY + 8,
-            left: rect.left + window.scrollX
-          });
+          const dropdownHeight = 384;
+          const viewportHeight = window.innerHeight;
+          const spaceBelow = viewportHeight - rect.bottom;
+          const spaceAbove = rect.top;
+
+          let top = rect.bottom + window.scrollY + 8;
+          let left = rect.left + window.scrollX;
+
+          if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+            top = rect.top + window.scrollY - dropdownHeight - 8;
+          }
+
+          setDropdownPosition({ top, left });
         }
       }
       setSearchQuery('');
@@ -385,10 +432,12 @@ export default function AssigneeDropdown({
       {isOpen && !disabled && dropdownPosition && typeof window !== 'undefined' && createPortal(
         <div
           ref={dropdownRef}
-          className="fixed bg-white border border-gray-200 shadow-xl rounded-lg w-80 max-h-96 flex flex-col z-[9999] overflow-hidden"
+          className="fixed bg-white border border-gray-200 shadow-xl rounded-lg w-72 flex flex-col z-[9999] overflow-hidden"
           style={{
             top: dropdownPosition.top,
-            left: dropdownPosition.left
+            left: dropdownPosition.left,
+            maxHeight: Math.min(384, window.innerHeight - 32), // Ensure it fits in viewport with padding
+            minHeight: '200px' // Ensure minimum height for usability
           }}
           onWheel={(e) => {
             e.stopPropagation();
@@ -416,9 +465,27 @@ export default function AssigneeDropdown({
             </button>
           </div>
 
+          {/* Search */}
+          <div className="p-3 border-b border-gray-200">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Search members..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+
           {/* Members List */}
           <div
             className="flex-1 overflow-y-auto overscroll-contain"
+            style={{
+              maxHeight: 'calc(100% - 180px)', // Reserve space for header (60px), search (60px), and footer (60px)
+              minHeight: '120px' // Ensure minimum usable height
+            }}
             onWheel={(e) => {
               e.stopPropagation();
               e.preventDefault();
