@@ -29,7 +29,15 @@ import ProjectAssigneeManager from '@/components/ProjectAssigneeManager'
 import TaskOverview from '@/components/TaskOverview'
 import DateRangePicker from '@/components/DateRangePicker'
 import SideMenu from '@/components/SideMenu'
-import { Calendar, Import, MoreHorizontal, LogOut, User } from 'lucide-react'
+import LabelManager from "@/components/LabelManager";
+import {
+  Calendar,
+  Import,
+  MoreHorizontal,
+  LogOut,
+  User,
+  Tag,
+} from "lucide-react";
 
 export default function BoardPage() {
   const { data: session, status } = useSession();
@@ -72,6 +80,9 @@ export default function BoardPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isTaskOverviewOpen, setIsTaskOverviewOpen] = useState(false);
 
+  // Label manager state
+  const [isLabelManagerOpen, setIsLabelManagerOpen] = useState(false);
+
   // Task overview handlers
   const handleTaskClick = (task: any) => {
     // Convert the task to our Task type if needed
@@ -99,22 +110,26 @@ export default function BoardPage() {
     // For now, we'll just update the local state
   };
 
-  // Labels change handler
+  // Labels change handler - now uses local storage
   const handleLabelsChange = (taskId: number, labels: string[]) => {
-    // Update the task labels in local state
+    // Update the task labels in local state for immediate UI feedback
     setApiTasks((prevTasks) =>
       prevTasks.map((task) =>
         task.id === taskId ? { ...task, tags: labels } : task
       )
     );
 
-    // Here you could also make an API call to persist the labels change
-    // For now, we'll just update the local state
+    // Labels are automatically saved to localStorage by the TaskCard component
+    // This handler is mainly for UI state synchronization
+    console.log("🏷️ Labels updated for task:", taskId, "Labels:", labels);
   };
 
   // Assignees change handler - now only updates local state since AssigneeDropdown handles API calls
-  const handleAssigneesChange = (taskId: number, assignees: ApiTaskAssignee[]) => {
-    console.log('👥 Handling assignees change:', { taskId, assignees });
+  const handleAssigneesChange = (
+    taskId: number,
+    assignees: ApiTaskAssignee[]
+  ) => {
+    console.log("👥 Handling assignees change:", { taskId, assignees });
 
     // Update the task assignees in local state
     setApiTasks((prevTasks) =>
@@ -123,7 +138,7 @@ export default function BoardPage() {
       )
     );
 
-    console.log('✅ Local state updated with new assignees');
+    console.log("✅ Local state updated with new assignees");
   };
 
   // Side menu handlers
@@ -1094,7 +1109,10 @@ export default function BoardPage() {
       // It's a column ID - convert to title
       const column = columns.find((col) => col.id === overId);
       newColumn = column ? column.title : overId;
-      console.log("✅ Dropped on column:", { columnId: overId, columnTitle: newColumn });
+      console.log("✅ Dropped on column:", {
+        columnId: overId,
+        columnTitle: newColumn,
+      });
     } else {
       // It's likely a task ID - find which column that task belongs to
       const targetTask = tasks.find((t) => String(t.id) === overId);
@@ -1130,13 +1148,13 @@ export default function BoardPage() {
     }
 
     // Validate that the new column is valid - using dynamic columns
-    const validColumns = columns.map(col => col.title);
+    const validColumns = columns.map((col) => col.title);
 
     console.log("🔍 Column validation:", {
       newColumn,
       validColumns,
       isValid: validColumns.includes(newColumn),
-      availableColumns: columns.map(c => ({ id: c.id, title: c.title }))
+      availableColumns: columns.map((c) => ({ id: c.id, title: c.title })),
     });
 
     if (!validColumns.includes(newColumn)) {
@@ -1270,12 +1288,24 @@ export default function BoardPage() {
                 </label>
               </div>
 
+              {/* Label Manager Button */}
+              <button
+                onClick={() => setIsLabelManagerOpen(true)}
+                className="flex items-center space-x-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-md text-sm font-medium transition-colors hover:bg-gray-200"
+                title="Manage Trello Labels"
+              >
+                <Tag className="w-4 h-4" />
+                <span className="hidden md:inline">Labels</span>
+              </button>
+
               <ProjectAssigneeManager
                 maxVisible={3}
                 size="md"
                 email={userEmail || undefined}
                 projectId={
-                  selectedProject && selectedProject !== "" && selectedProject !== "all"
+                  selectedProject &&
+                  selectedProject !== "" &&
+                  selectedProject !== "all"
                     ? projects.find((p) => p.name === selectedProject)?.id
                     : undefined
                 }
@@ -1461,6 +1491,12 @@ export default function BoardPage() {
         task={selectedTask}
         isOpen={isTaskOverviewOpen}
         onClose={handleCloseTaskOverview}
+      />
+
+      {/* Label Manager Modal */}
+      <LabelManager
+        isOpen={isLabelManagerOpen}
+        onClose={() => setIsLabelManagerOpen(false)}
       />
     </div>
   );

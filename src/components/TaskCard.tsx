@@ -7,6 +7,10 @@ import { Calendar, MoreHorizontal, X, Palette, Tag } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { ApiTaskAssignee } from '@/lib/services/taskManagementServices';
 import { useSession } from 'next-auth/react';
+import {
+  labelStorageService,
+  TrelloLabel,
+} from "@/lib/services/labelStorageService";
 
 interface TaskCardProps {
   task: Task;
@@ -34,13 +38,49 @@ export default function TaskCard({
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showLabelPicker, setShowLabelPicker] = useState(false);
-  const [localLabels, setLocalLabels] = useState<string[]>(task.tags || []);
+  const [localLabels, setLocalLabels] = useState<string[]>([]);
+  const [availableLabels, setAvailableLabels] = useState<TrelloLabel[]>([]);
+  const [isClient, setIsClient] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Sync local labels with task tags when task prop changes
+  // Set client-side flag to prevent hydration issues
   useEffect(() => {
-    setLocalLabels(task.tags || []);
-  }, [task.tags]);
+    setIsClient(true);
+  }, []);
+
+  // Load labels from local storage on component mount (client-side only)
+  useEffect(() => {
+    if (!isClient) return;
+
+    try {
+      const storedLabels = labelStorageService.getTaskLabels(task.id);
+      const allLabels = labelStorageService.getActiveLabels();
+
+      setLocalLabels(storedLabels || []);
+      setAvailableLabels(allLabels || []);
+    } catch (error) {
+      // Silently handle errors
+      setLocalLabels([]);
+      setAvailableLabels([]);
+    }
+  }, [task.id, isClient]);
+
+  // Sync with task tags if they exist (fallback to API tags)
+  useEffect(() => {
+    if (!isClient || !task.tags || task.tags.length === 0) return;
+
+    try {
+      // If task has API tags, merge with local storage labels
+      const storedLabels = labelStorageService.getTaskLabels(task.id);
+      const mergedLabels = Array.from(new Set([...storedLabels, ...task.tags]));
+      setLocalLabels(mergedLabels);
+
+      // Save merged labels to local storage
+      labelStorageService.saveTaskLabels(task.id, mergedLabels);
+    } catch (error) {
+      // Silently handle errors
+    }
+  }, [task.tags, task.id, isClient]);
 
   const {
     attributes,
@@ -86,53 +126,8 @@ export default function TaskCard({
       }))
     : [];
 
-  // Predefined labels based on API priority structure - ordered by priority (highest first)
-  const predefinedLabels = [
-    {
-      name: "Critical",
-      color: "bg-red-700",
-      textColor: "text-white",
-      priority: 5,
-    }, // API ID 4 - Critical
-    { name: "High", color: "bg-red-500", textColor: "text-white", priority: 4 }, // API ID 3 - High
-    {
-      name: "Intermediate",
-      color: "bg-yellow-500",
-      textColor: "text-white",
-      priority: 3,
-    }, // API ID 2 - Intermediate
-    {
-      name: "Low",
-      color: "bg-green-500",
-      textColor: "text-white",
-      priority: 2,
-    }, // API ID 1 - Low
-    {
-      name: "Non-billable",
-      color: "bg-gray-500",
-      textColor: "text-white",
-      priority: 1,
-    }, // API ID 5 - Non-billable
-    // Additional custom labels
-    {
-      name: "Bug",
-      color: "bg-orange-500",
-      textColor: "text-white",
-      priority: 4,
-    },
-    {
-      name: "Feature",
-      color: "bg-blue-500",
-      textColor: "text-white",
-      priority: 3,
-    },
-    {
-      name: "Review",
-      color: "bg-purple-500",
-      textColor: "text-white",
-      priority: 2,
-    },
-  ];
+  // Get available labels from local storage
+  const predefinedLabels = availableLabels;
 
   // Get label priority for sorting - use task's API priority
   const getLabelPriority = (tag: string): number => {
@@ -302,8 +297,6 @@ export default function TaskCard({
 
   // Handle label toggle
   const handleLabelToggle = (labelName: string) => {
-    if (!onLabelsChange) return;
-
     const currentLabels = localLabels;
     const isLabelSelected = currentLabels.includes(labelName);
 
@@ -325,8 +318,13 @@ export default function TaskCard({
     // Update local state immediately for instant UI feedback
     setLocalLabels(newLabels);
 
-    // Update parent state
-    onLabelsChange(task.id, newLabels);
+    // Save to local storage
+    labelStorageService.saveTaskLabels(task.id, newLabels);
+
+    // Update parent state if callback exists
+    if (onLabelsChange) {
+      onLabelsChange(task.id, newLabels);
+    }
   };
 
   // Handle assignee change
@@ -345,7 +343,7 @@ export default function TaskCard({
 
   // Get project ID from task
   const getProjectId = () => {
-    if (typeof task.project === 'object' && task.project?.id) {
+    if (typeof task.project === "object" && task.project?.id) {
       return task.project.id;
     }
     return undefined;
@@ -446,18 +444,23 @@ export default function TaskCard({
         console.log("🖱️ Mouse down on task:", task.title);
       }}
     >
-      {/* Labels - Color bars without text at the very top - sorted by priority */}
-      {localLabels && localLabels.length > 0 && (
+      {/* Trello-like Labels - Color bars at the top - sorted by priority */}
+      {isClient && localLabels && localLabels.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
-          {getSortedLabels(localLabels).map((tag, index) => (
-            <span
-              key={index}
-              className={`w-8 h-2 rounded-full ${
-                getTagColor(tag).split(" ")[0]
-              }`}
-              title={tag} // Show label name on hover
-            ></span>
-          ))}
+          {getSortedLabels(localLabels).map((tag, index) => {
+            const label = availableLabels.find((l) => l.name === tag);
+            return (
+              <div
+                key={`${task.id}-${tag}-${index}`}
+                className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                  label ? `${label.color} ${label.textColor}` : getTagColor(tag)
+                }`}
+                title={tag} // Show label name on hover
+              >
+                <span className="truncate max-w-[60px]">{tag}</span>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -562,7 +565,7 @@ export default function TaskCard({
           )}
 
           {/* Label Picker */}
-          {showLabelPicker && (
+          {showLabelPicker && isClient && (
             <div
               className="absolute right-0 top-6 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-3 w-64"
               onClick={(e) => {
@@ -575,23 +578,16 @@ export default function TaskCard({
             >
               <div className="mb-2">
                 <h3 className="text-sm font-medium text-gray-900 mb-2">
-                  Labels
+                  🏷️ Trello Labels
                 </h3>
-                <div className="space-y-1">
+                <div className="space-y-1 max-h-64 overflow-y-auto">
                   {predefinedLabels
-                    .sort((a, b) => a.priority - b.priority) // Sort by priority (lowest number = highest priority)
+                    .sort((a, b) => b.priority - a.priority) // Sort by priority (highest first)
                     .map((label) => {
                       const isSelected = localLabels.includes(label.name);
-                      console.log("🔍 Label check:", {
-                        taskId: task.id,
-                        labelName: label.name,
-                        taskTags: task.tags,
-                        localLabels,
-                        isSelected,
-                      });
                       return (
                         <div
-                          key={label.name}
+                          key={`picker-${task.id}-${label.id}`}
                           className="flex items-center space-x-2 p-1 rounded hover:bg-gray-50"
                           onClick={(e) => {
                             e.preventDefault();
@@ -603,7 +599,7 @@ export default function TaskCard({
                         >
                           <input
                             type="checkbox"
-                            id={`label-${task.id}-${label.name}`}
+                            id={`label-${task.id}-${label.id}`}
                             checked={isSelected}
                             onChange={(e) => {
                               e.preventDefault();
@@ -620,8 +616,8 @@ export default function TaskCard({
                             className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
                           />
                           <label
-                            htmlFor={`label-${task.id}-${label.name}`}
-                            className={`flex-1 px-2 py-1 rounded text-xs font-medium cursor-pointer ${label.color} ${label.textColor}`}
+                            htmlFor={`label-${task.id}-${label.id}`}
+                            className={`flex items-center gap-2 flex-1 px-2 py-1 rounded text-xs font-medium cursor-pointer ${label.color} ${label.textColor}`}
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
@@ -631,7 +627,10 @@ export default function TaskCard({
                               e.stopPropagation();
                             }}
                           >
-                            {label.name}
+                            <span>{label.name}</span>
+                            <span className="text-xs opacity-75 ml-auto">
+                              {label.category}
+                            </span>
                           </label>
                         </div>
                       );
